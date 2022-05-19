@@ -27,7 +27,19 @@ class Detect:
         self.device = 'cpu'
         self.match_pair=dict()
         self.model._apply(self.pin_memory)
+        self.stms = [torch.cuda.Stream() for _ in range(2)]
         
+        torch.nn.modules.module.register_module_forward_pre_hook(self.pre_hook(self.stms[0]))
+    
+    def pre_hook(self, strm):
+        def forward_pre_hook(module, data_input):
+            if len(list(module.children())) == 0 and len(list(module.parameters())) > 0:
+                with torch.cuda.stream(strm):
+                    module._apply(self.to_cuda)
+                torch.cuda.synchronize()
+        
+        return forward_pre_hook
+            
     def pin_memory(self, tensor):
         return tensor.pin_memory()
     
@@ -54,13 +66,18 @@ class Detect:
         self.device = 'cpu'
         self.model._apply(self.to_cpu)
         #self.model.to(self.device)
+        self.match_pair.clear()
         torch.cuda.empty_cache()
 
-    @torch.no_grad()
     def run(self, w_id, img):
+        with torch.cuda.stream(self.stms[1]):
+            self.process(w_id=w_id, img=img)
+    
+    @torch.no_grad()
+    def process(self, w_id, img):
         # Run inference
         dt = []
-        t1 = time_sync()
+       
         img = img.transpose((0, 3, 1, 2))[::-1]  # HWC to CHW, BGR to RGB
         img = np.ascontiguousarray(img)
 
@@ -69,17 +86,16 @@ class Detect:
             im = im[None]  # expand for batch dim
         
         print(f'worker {w_id} : data shape is {im.shape} ', )  
+        
+        t1 = time_sync()
+        # Inference
+        self.model(im)
         t2 = time_sync()
         dt.append(t2 - t1)
         
-        # Inference
-        self.model(im)
-        t3 = time_sync()
-        dt.append(t3 - t2)
-        
         # Print results
         t = tuple(x * 1E3 for x in dt)
-        print(f'Speed: %.1fms pre-process, %.1fms inference, worker id :%d' % (t + (w_id,)))
+        print(f'Speed: %.1fms inference, worker id :%d' % (t + (w_id,)))
 
 class Worker:
     
@@ -98,11 +114,13 @@ class Worker:
     
     def run(self):
         self.time_stamp.append(time.time())
-
+        
         while True:
+            print('&&&&&&&&&&&&&&&&&&')
             command = None if self.c2wQueue.empty() else self.c2wQueue.get()
+            print(f'*** worker to run : {command} ***')
             if command == 'to_load':
-                self.engine.load_model()
+                # self.engine.load_model()
                 self.loaded = True
                     
             if command == 'to_infer':
@@ -127,12 +145,6 @@ class Worker:
                 self.engine.release_model()
                 self.loaded = False
                         
-            # if self.imgQueue.empty() and self.hasInfered:
-            #     print('all {} images have been processed by worker {}'.format(self.imgs, self.id))
-            #     # release gpu memory
-            #     self.engine.release_model()
-            #     self.w2cQueue.put('finish')
-            #     break
             if command == 'exit':
                 print(f'worker {self.id} processed image number : {self.imgs} and to exit ...')
                 break
