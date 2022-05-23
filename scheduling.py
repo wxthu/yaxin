@@ -15,7 +15,6 @@ import torch
 
 from torchvision.models.resnet import resnet18, resnet34, resnet50, resnet101, resnet152
 from torchvision.models import alexnet, vgg16, vgg13, vgg11, squeezenet1_0, squeezenet1_1
-from models.common import DetectMultiBackend
 from utils.general import check_requirements, print_args
 from utils.torch_utils import time_sync
 from controller import Controller
@@ -309,14 +308,14 @@ if __name__ == "__main__":
                                       2:[794, {'infer_time':44.92, 'total_time':341.29, 'gpu_util':55}],
                                       3:[914, {'infer_time':71.11, 'total_time':367.48, 'gpu_util':66}],
                                       4:[1026, {'infer_time':99.23, 'total_time':395.6, 'gpu_util':78}]}])
-    models.append(['yolov5x', yolov5x, {1:[422, {'infer_time':31.91, 'total_time':140.8, 'gpu_util':70}],
-                                        2:[458, {'infer_time':58.69, 'total_time':167.58, 'gpu_util':78}],
-                                        3:[506, {'infer_time':90.23, 'total_time':199.12, 'gpu_util':78}],
-                                        4:[566, {'infer_time':118.76, 'total_time':227.65, 'gpu_util':78}]}])
-    models.append(['yolov5s', yolov5s, {1:[60, {'infer_time':7.46, 'total_time':27.29, 'gpu_util':40}],
-                                        2:[96, {'infer_time':7.51, 'total_time':27.34, 'gpu_util':46}],
-                                        3:[110, {'infer_time':11.22, 'total_time':31.05, 'gpu_util':54}],
-                                        4:[132, {'infer_time':13.75, 'total_time':33.58, 'gpu_util':57}]}])
+    # models.append(['yolov5x', yolov5x, {1:[422, {'infer_time':31.91, 'total_time':140.8, 'gpu_util':70}],
+    #                                     2:[458, {'infer_time':58.69, 'total_time':167.58, 'gpu_util':78}],
+    #                                     3:[506, {'infer_time':90.23, 'total_time':199.12, 'gpu_util':78}],
+    #                                     4:[566, {'infer_time':118.76, 'total_time':227.65, 'gpu_util':78}]}])
+    # models.append(['yolov5s', yolov5s, {1:[60, {'infer_time':7.46, 'total_time':27.29, 'gpu_util':40}],
+    #                                     2:[96, {'infer_time':7.51, 'total_time':27.34, 'gpu_util':46}],
+    #                                     3:[110, {'infer_time':11.22, 'total_time':31.05, 'gpu_util':54}],
+    #                                     4:[132, {'infer_time':13.75, 'total_time':33.58, 'gpu_util':57}]}])
 
     opt = parse_opt()
     main(opt)
