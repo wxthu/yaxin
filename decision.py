@@ -34,13 +34,12 @@ class Decision:
         
         selected = []
         while i > 0:
+            
             if dp[i][r] != dp[i-1][r]:
-                # x[i] = 1
                 selected.append(i)
                 max_value += self.v[i]
                 r = r - self.w[i]
-            # else:
-            #     x[i] = 0
+           
             i = i - 1
         
         return selected

@@ -89,8 +89,6 @@ class Controller:
                     # to ensure the consistency of indexing
                     self.weights.append(self.config[i][1][0])
                     self.prices.append(self.config[i][1][1][self.strat])
-
-            # candidate.sort(key=self.compare_p)
             
             self.task_num = len(self.candidate)
             self.cursor += 1
