@@ -26,9 +26,9 @@ class Detect:
         self.device = 'cpu'
         self.match_pair=dict()
         self.model._apply(self.pin_memory)
-        self.stms = [torch.cuda.Stream() for _ in range(2)]
+        # self.stms = [torch.cuda.Stream() for _ in range(2)]
         
-        torch.nn.modules.module.register_module_forward_pre_hook(self.pre_hook(self.stms[0]))
+        # torch.nn.modules.module.register_module_forward_pre_hook(self.pre_hook(self.stms[0]))
     
     def pre_hook(self, strm):
         def forward_pre_hook(module, data_input):
@@ -58,43 +58,32 @@ class Detect:
     def load_model(self):
         self.device = 'cuda'
         os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-        # self.model._apply(self.to_cuda)
-        # self.model.to(self.device)
+        self.model._apply(self.to_cuda)
         
     def release_model(self):
         self.device = 'cpu'
         self.model._apply(self.to_cpu)
-        #self.model.to(self.device)
         self.match_pair.clear()
+        
         torch.cuda.empty_cache()
 
-    def run(self, w_id, img):
-        img = img.transpose((0, 3, 1, 2))[::-1]  # HWC to CHW, BGR to RGB
-        img = np.ascontiguousarray(img)
-
-        im = torch.from_numpy(img).type(torch.FloatTensor).to(self.device)
-        if len(im.shape) == 3:
-            im = im[None]  # expand for batch dim
+    @torch.no_grad()
+    def run(self, w_id, im):
         
         print(f'worker {w_id} : data shape is {im.shape} ')  
         
-        with torch.cuda.stream(self.stms[1]):
-            self.process(w_id=w_id, img=im)
-    
-    @torch.no_grad()
-    def process(self, w_id, img):
-        # Run inference
+        # with torch.cuda.stream(self.stms[1]):
         dt = []
-        
         t1 = time_sync()
         # Inference
-        self.model(img)
+        self.model(im)
         t2 = time_sync()
         dt.append(t2 - t1)
         
         # Print results
         t = tuple(x * 1E3 for x in dt)
         print(f'Speed: %.1fms inference, worker id :%d' % (t + (w_id,)))
+    
 
 class Worker:
     
@@ -107,43 +96,46 @@ class Worker:
         self.w2cQueue = w2cQueue
         self.imgQueue = imgQueue
         self.time_stamp = time_stamp
-        self.imgs = 0
-        self.hasInfered = False # Set a flag to avoid the case where controller hasn't put img into imgQueue
-        self.loaded = False     # To indicate whether model has loaded into GPU
-    
+        self.img_count = 0
+        self.imgs = []
+        self.strms = [torch.cuda.Stream() for _ in range(2)]
+        
     def run(self):
         self.time_stamp.append(time.time())
         
         while True:
             command = None if self.c2wQueue.empty() else self.c2wQueue.get()
-            if command == 'to_load':
-                self.engine.load_model()
-                self.loaded = True
+            if command == 'loading':
+                with torch.cuda.stream(self.strms[0]):
+                    self.engine.load_model() 
                     
-            if command == 'to_infer':
-                assert self.loaded == True
-                self.hasInfered = True
-                assert not self.imgQueue.empty()
+                    while self.c2wQueue.empty():
+                        pass
+                    
+                    bs = self.c2wQueue.get()
+                    for _ in range(int(bs)):
+                        if self.imgQueue.qsize() > 0:
+                            self.img_count = self.imgQueue.get()
+                            self.imgs.append(np.zeros(shape=(384, 640, 3)))
+                    assert len(self.imgs) > 0
+                    
+                    self.imgs = np.stack(self.imgs).transpose((0, 3, 1, 2))
+                    self.imgs = np.ascontiguousarray(self.imgs)
+                    self.imgs = torch.from_numpy(self.imgs).type(torch.FloatTensor).cuda()
+
+                torch.cuda.synchronize()
+                self.w2cQueue.put('load_over')
                 
-                while self.c2wQueue.empty():
-                    pass
-                batch_cmd = self.c2wQueue.get()
-                frames = []
-                for _ in range(int(batch_cmd)):
-                    if self.imgQueue.qsize() > 0:
-                        self.imgs = self.imgQueue.get()
-                        frames.append(np.zeros(shape=(384, 640, 3)))
+            if command == 'inference':
 
-                assert len(frames) > 0
-
-                pred = self.engine.run(self.id, np.stack(frames))
-                # send signal to controller
-                self.w2cQueue.put('batch_done')
-                self.engine.release_model()
-                self.loaded = False
+                pred = self.engine.run(self.id, self.imgs)
+                self.w2cQueue.put('task_over')
+                with torch.cuda.stream(self.strms[1]):
+                    self.engine.release_model()
+                    self.imgs = []
                         
             if command == 'exit':
-                print(f'worker {self.id} processed image number : {self.imgs} and to exit ...')
+                print(f'worker {self.id} processed image number : {self.img_count} and to exit ...')
                 break
                 
         self.time_stamp.append(time.time())
@@ -172,11 +164,9 @@ def runController(workers_num,
                   c2wQueues,
                   w2cQueues, 
                   imgQueues,
-                  total_memory,
-                  config,
-                  strategy):
-    controller = Controller(detector_num=workers_num, img_num=image_num*video_num, mem=total_memory, config=config,
-                            strategy=strategy, c2wQueues=c2wQueues, w2cQueues=w2cQueues, imgQueues=imgQueues)
+                  config):
+    controller = Controller(detector_num=workers_num, img_num=image_num*video_num, config=config,
+                            c2wQueues=c2wQueues, w2cQueues=w2cQueues, imgQueues=imgQueues)
     controller.run()
 
 def parse_opt():
@@ -223,9 +213,7 @@ def main(opt):
                                                      c2wQueues,
                                                      w2cQueues,
                                                      imgQueues,
-                                                     total_memory,
-                                                     config,
-                                                     strategy
+                                                     config
                                                      )
                          )
     
@@ -260,30 +248,30 @@ def main(opt):
 
 if __name__ == "__main__":
     models = []
-    yolov5x = DetectMultiBackend('yolov5x.pt', device=torch.device('cpu'))
-    yolov5s = DetectMultiBackend('yolov5s.pt', device=torch.device('cpu'))
+    # yolov5x = DetectMultiBackend('yolov5x.pt', device=torch.device('cpu'))
+    # yolov5s = DetectMultiBackend('yolov5s.pt', device=torch.device('cpu'))
 
     # profiling : memory, inference, total_time, gpu_utilization
-    models.append(['sqt10', squeezenet1_0(), {1:[58, {'infer_time':3.96, 'total_time':10.0, 'gpu_util':47}],
-                                              2:[120, {'infer_time':8.58, 'total_time':14.62, 'gpu_util':65}],
-                                              3:[186, {'infer_time':13.05, 'total_time':19.09, 'gpu_util':74}],
-                                              4:[238, {'infer_time':17.01, 'total_time':23.05, 'gpu_util':78}]}])
-    models.append(['sqt11', squeezenet1_1(), {1:[46, {'infer_time':3.52, 'total_time':9.62, 'gpu_util':40}],
-                                              2:[70, {'infer_time':4.45, 'total_time':10.55, 'gpu_util':51}],
-                                              3:[106, {'infer_time':6.84, 'total_time':12.94, 'gpu_util':60}],
-                                              4:[130, {'infer_time':9.03, 'total_time':15.13, 'gpu_util':67}]}])
-    models.append(['rnt18', resnet18(), {1:[124, {'infer_time':4.39, 'total_time':24.2, 'gpu_util':54}],
-                                         2:[126, {'infer_time':8.29, 'total_time':28.1, 'gpu_util':60}],
-                                         3:[154, {'infer_time':11.99, 'total_time':31.8, 'gpu_util':67}],
-                                         4:[196, {'infer_time':15.3, 'total_time':35.11, 'gpu_util':69}]}])
-    models.append(['rnt34', resnet34(), {1:[166, {'infer_time':7.54, 'total_time':43.22, 'gpu_util':54}],
-                                         2:[168, {'infer_time':14.48, 'total_time':50.16, 'gpu_util':61}],
-                                         3:[198, {'infer_time':21.12, 'total_time':56.8, 'gpu_util':67}],
-                                         4:[238, {'infer_time':27.37, 'total_time':63.05, 'gpu_util':71}]}])
-    models.append(['rnt50', resnet50(), {1:[192, {'infer_time':13.44, 'total_time':59.84, 'gpu_util':56}],
-                                         2:[238, {'infer_time':24.62, 'total_time':71.02, 'gpu_util':61}],
-                                         3:[274, {'infer_time':37.04, 'total_time':83.44, 'gpu_util':71}],
-                                         4:[192, {'infer_time':48.22, 'total_time':94.62, 'gpu_util':71}]}])
+    # models.append(['sqt10', squeezenet1_0(), {1:[58, {'infer_time':3.96, 'total_time':10.0, 'gpu_util':47}],
+    #                                           2:[120, {'infer_time':8.58, 'total_time':14.62, 'gpu_util':65}],
+    #                                           3:[186, {'infer_time':13.05, 'total_time':19.09, 'gpu_util':74}],
+    #                                           4:[238, {'infer_time':17.01, 'total_time':23.05, 'gpu_util':78}]}])
+    # models.append(['sqt11', squeezenet1_1(), {1:[46, {'infer_time':3.52, 'total_time':9.62, 'gpu_util':40}],
+    #                                           2:[70, {'infer_time':4.45, 'total_time':10.55, 'gpu_util':51}],
+    #                                           3:[106, {'infer_time':6.84, 'total_time':12.94, 'gpu_util':60}],
+    #                                           4:[130, {'infer_time':9.03, 'total_time':15.13, 'gpu_util':67}]}])
+    # models.append(['rnt18', resnet18(), {1:[124, {'infer_time':4.39, 'total_time':24.2, 'gpu_util':54}],
+    #                                      2:[126, {'infer_time':8.29, 'total_time':28.1, 'gpu_util':60}],
+    #                                      3:[154, {'infer_time':11.99, 'total_time':31.8, 'gpu_util':67}],
+    #                                      4:[196, {'infer_time':15.3, 'total_time':35.11, 'gpu_util':69}]}])
+    # models.append(['rnt34', resnet34(), {1:[166, {'infer_time':7.54, 'total_time':43.22, 'gpu_util':54}],
+    #                                      2:[168, {'infer_time':14.48, 'total_time':50.16, 'gpu_util':61}],
+    #                                      3:[198, {'infer_time':21.12, 'total_time':56.8, 'gpu_util':67}],
+    #                                      4:[238, {'infer_time':27.37, 'total_time':63.05, 'gpu_util':71}]}])
+    # models.append(['rnt50', resnet50(), {1:[192, {'infer_time':13.44, 'total_time':59.84, 'gpu_util':56}],
+    #                                      2:[238, {'infer_time':24.62, 'total_time':71.02, 'gpu_util':61}],
+    #                                      3:[274, {'infer_time':37.04, 'total_time':83.44, 'gpu_util':71}],
+    #                                      4:[192, {'infer_time':48.22, 'total_time':94.62, 'gpu_util':71}]}])
     models.append(['rnt101', resnet101(), {1:[266, {'infer_time':22.75, 'total_time':132.62, 'gpu_util':50}],
                                            2:[312, {'infer_time':40.81, 'total_time':150.68, 'gpu_util':61}],
                                            3:[376, {'infer_time':63.33, 'total_time':173.2, 'gpu_util':68}],

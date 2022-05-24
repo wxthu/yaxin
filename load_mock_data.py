@@ -6,12 +6,11 @@ import random
 def load_mock_data(filename='mock_batched_request_rate.csv', freq_low=2, freq_high=5):
     def get_random_latency(n):
         latency_list = [1000/i for i in range(freq_low, freq_high+1)]
-        return [random.choice(latency_list) for _ in range(n)]
+        return [int(random.choice(latency_list)) for _ in range(n)]
     
     data = pd.read_csv(filename)
     data = data.to_numpy()
     data = data.tolist()
-    
     data_with_timestamp = []
     
     for row in data:
@@ -19,10 +18,13 @@ def load_mock_data(filename='mock_batched_request_rate.csv', freq_low=2, freq_hi
         for col in row:
             row_list.append([col, get_random_latency(col)])
         data_with_timestamp.append(row_list)
-
-    return data_with_timestamp
+    
+    data = np.array(data_with_timestamp)
+    return data, data.shape[1]
 
 
 if __name__ == "__main__":
-    mocked_data = load_mock_data()
-    a = np.array(mocked_data)
+    data, col = load_mock_data()
+    print(f'type : {type(data)}')
+    print(f'size : {col}')
+    print((data[:,2,:][:, 0]))
