@@ -133,7 +133,7 @@ class Worker:
                 with torch.cuda.stream(self.strms[1]):
                     self.engine.release_model()
                     self.imgs = []
-                        
+
             if command == 'exit':
                 print(f'worker {self.id} processed image number : {self.img_count} and to exit ...')
                 break

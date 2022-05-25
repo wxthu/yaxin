@@ -61,7 +61,9 @@ class Controller:
             if batch:
                 srt = (sum(ddl) - self.config[i][batch][1]['infer_time']) / batch
                 self.candidate.append([i, batch, srt])
+        
         self.candidate.sort(key=lambda obj: obj[2])
+        assert len(self.candidate) > 0, 'no image input, please re-generate mocked data'
         
         self.act_id = self.candidate[0][0]
         self.task_num = len(self.candidate)
@@ -74,7 +76,7 @@ class Controller:
         self.cursor += 1
         self.next_id = self.candidate[self.cursor][0] if self.cursor < len(self.candidate) else None
         self.load_state[self.act_id] = True
-        
+    
     
     # Shortest Remaining Time scheduling strategy
     def update_cmd_queue(self):
@@ -83,10 +85,8 @@ class Controller:
             self.cursor = 0
             self.compute_candidates()
             
-        command = None if self.w2cQueues[self.act_id].empty else self.w2cQueues[self.act_id].get()
-        # print(f'** active worker : {self.act_id} / {command}')
+        command = None if self.w2cQueues[self.act_id].empty() else self.w2cQueues[self.act_id].get()
         if command is not None:
-            print(f'ctrl command is : {command}')
             if command == 'task_over':
                 self.load_state[self.act_id] = False
                 self.task_num -= 1
@@ -96,15 +96,15 @@ class Controller:
                     self.cursor += 1
                     self.next_id = self.candidate[self.cursor][0] if self.cursor < len(self.candidate) else None
             
-            if command == 'load_over':
+            elif command == 'load_over':
                 # Pipeline: loading next model while current inference
                 if self.next_id is not None:
                     if self.load_state[self.next_id] is False:
                         self.c2wQueues[self.next_id].put('loading')
-                        self.c2wQueues[self.next_id].put(self.batches[self.cursor+1])
+                        self.c2wQueues[self.next_id].put(self.candidate[self.cursor][1])
                         self.load_state[self.next_id] = True    
             else:
-                print('=== Unknown command ===')
+                print(f'=== Unknown command: {command} ===')
                 assert False
         return
 
