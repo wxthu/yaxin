@@ -1,6 +1,6 @@
-import pandas as pd
 
 from decision import Decision
+from load_mock_data import load_mock_data
 
 class Controller:
     """
@@ -14,6 +14,7 @@ class Controller:
         self.weights = []
         self.prices = []
         self.batches = []
+        self.deadlines = []
         self.memory = mem  # memory contraint
         self.detector_num = detector_num
         self.act_ids = [] 
@@ -23,7 +24,6 @@ class Controller:
         self.c2wQueues = c2wQueues
         self.w2cQueues = w2cQueues
         self.imgQueues = imgQueues
-        self.exitSignal = 0  # when all workers finished job, exitSignal == detector_num
         self.cmds = []  # each element is bool list which indicate the models to be executed at the moment
         self.cursor = 0 # add cursor for cmds
         self.task_num = 0 # record the number of tasks at the moment
@@ -38,9 +38,10 @@ class Controller:
                 # q.put(np.zeros(shape=(1920, 1080, 3)))
                 self.imgQueues[q].put(i+1)
 
-        df = pd.read_csv('mock_batched_request_rate.csv')
-        for col in df:
-            self.cmds.append(df[col].values)
+        data, col = load_mock_data()
+        for i in range(col):
+            self.cmds.append(list(data[:, i, :][:, 0]))
+            self.deadlines.append(list(data[:, i, :][:, 1]))
 
         for x in self.cmds:
             self.total_requests += sum(x)
@@ -57,9 +58,6 @@ class Controller:
         
         return selected_w_id
     
-    def compare_p(self, i):
-        return self.prices[i]
-    
     def remainingMemory(self):
         total = 0
         for i in self.act_ids:
@@ -70,32 +68,33 @@ class Controller:
     def update_cmd_queue(self):
         if self.task_num == 0:
             cmd = self.cmds[self.cursor]
+            ddls = self.deadlines[self.cursor]
             self.batches.clear()
             self.candidate.clear()
 
             # add 0 in the front of the list for dynamic programming
             wts = [0] 
             prc = [0]
-            for i, batch in enumerate(cmd):
+            for i, (batch, ddl) in enumerate(zip(cmd, ddls)):
                 if batch:
                     self.candidate.append(i)
                     self.batches.append(batch)
                     self.weights.append(self.config[i][batch][0])
-                    self.prices.append(self.config[i][batch][1][self.strat])
+                    srt = (sum(ddl) - self.config[i][batch][1]['infer_time']) / batch
+                    self.prices.append(100/srt)   # price must be positive
                     wts.append(self.config[i][batch][0])
-                    prc.append(self.config[i][batch][1][self.strat])
+                    prc.append(100/srt)
                 else:
                     # when detector i is not selected , we still add one element in the list 
                     # to ensure the consistency of indexing
                     self.weights.append(self.config[i][1][0])
-                    self.prices.append(self.config[i][1][1][self.strat])
+                    self.prices.append(self.config[i][1][1]['infer_time'])
             
             self.task_num = len(self.candidate)
             self.cursor += 1
 
             det = Decision(weights=wts, prices=prc, number=len(self.candidate), capacity=self.memory)
             select = det.decision()
-
             self.act_ids = [self.candidate[x - 1] for x in select]
 
             assert all(x in self.candidate for x in self.act_ids)
