@@ -40,33 +40,29 @@ def BatchDataset(data, batchsize=100):
     return real_data
 
  
-data = []
-with open('sampled_data_processed.csv', 'r') as csvfile:
+train_data = []
+with open('train_datasets.csv', 'r') as csvfile:
     reader = csv.reader(csvfile)
     
     headline = next(reader)
     for line in reader:
-        data.append([[int(line[3]), int(line[6]), float(line[7]), float(line[8])], [float(line[0])]])
-random.shuffle(data)
+        train_data.append([[int(line[3]), int(line[6]), float(line[7]), float(line[8])], [float(line[0])]])
+random.shuffle(train_data)
 
-for elem in data:
+for elem in train_data:
     elem[0] = torch.Tensor(elem[0])
     elem[1] = torch.Tensor(elem[1])
 
-train_data = data[:70000]
-test_data = data[70000:]
-del data
 
 batch_train = BatchDataset(train_data) 
 
 model= MLP().cuda()
 optimizer = torch.optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
-#loss_func = nn.CrossEntropyLoss().cuda()
 loss_func = nn.MSELoss().cuda()
 epoch = 10000
 
 # training
-for _ in range(epoch):
+for round in range(epoch):
     for i, data in enumerate(batch_train):
         
         optimizer.zero_grad()
@@ -81,5 +77,6 @@ for _ in range(epoch):
         optimizer.step()
         if i % 100 == 0:
             print(f'loss : {loss}')
+    print(f'=== finished epoch {round} ===')
 
 torch.save(model, 'mlp_pred.pkl')
