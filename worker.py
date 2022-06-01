@@ -13,9 +13,7 @@ class Detect:
         self.match_pair=dict()
         self.model._apply(self.pin_memory)
         # self.stms = [torch.cuda.Stream() for _ in range(2)]
-        
-        # torch.nn.modules.module.register_module_forward_pre_hook(self.pre_hook(self.stms[0]))
-    
+            
     def pre_hook(self, strm):
         def forward_pre_hook(module, data_input):
             if len(list(module.children())) == 0 and len(list(module.parameters())) > 0:
@@ -84,13 +82,17 @@ class Worker:
         self.time_stamp = time_stamp
         self.img_count = 0
         self.imgs = []
+        self.has_started = False
         self.strms = [torch.cuda.Stream() for _ in range(2)]
         
     def run(self):
-        self.time_stamp.append(time.time())
         
         while True:
             command = None if self.c2wQueue.empty() else self.c2wQueue.get()
+            if not self.has_started and command is not None:
+                self.time_stamp.append(time.time())
+                self.has_started = True
+                
             if command == 'loading':
                 with torch.cuda.stream(self.strms[0]):
                     self.engine.load_model() 

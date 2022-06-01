@@ -21,9 +21,9 @@ class Analyser:
         
         self.model._apply(self.pinned_memory)
     
-    def __call__(self):
-        self.run()
-        self.model.cpu()
+    def __call__(self, img):
+        self.run(img)
+        # self.model.cpu()
     
     def pinned_memory(self, tensor):
         return tensor.pin_memory()
@@ -31,6 +31,8 @@ class Analyser:
     def run(self, img):
         handler = torch.nn.modules.module.register_module_forward_pre_hook(self.flops_hook())
         self.model(img)
+        self.model.cpu()
+
         handler.remove()
         for module,shape in self.module_pair:
             self.flops.append(2 * Profiler(ForwardModule(module), {'x':torch.randn(shape)}).profile().macs)
