@@ -34,14 +34,13 @@ def runWorker(i,
                     )
     worker.run()
 
-def runController(workers_num, 
-                  image_num,
+def runController(image_num,
                   video_num,
                   c2wQueues,
                   w2cQueues, 
                   imgQueues,
-                  config):
-    controller = Controller(detector_num=workers_num, img_num=image_num*video_num, config=config,
+                  model_configs):
+    controller = Controller(img_num=image_num*video_num, model_configs=model_configs,
                             c2wQueues=c2wQueues, w2cQueues=w2cQueues, imgQueues=imgQueues)
     controller.run()
 
@@ -74,7 +73,6 @@ def main(opt):
         strategy = 'infer_time'
         print('*****  Expected strategy is non-existent and assign it by default *****')
     
-    config = [x[2] for x in models]
     # record all workers timestamp
     time_stamp = Manager().list()
     MAX_Q_NUM = 1000
@@ -83,13 +81,12 @@ def main(opt):
     w2cQueues = [Queue(MAX_Q_NUM) for _ in range(workers_num)]
     imgQueues = [Queue(MAX_Q_NUM) for _ in range(workers_num)]
     
-    controller = Process(target=runController, args=(workers_num, 
-                                                     image_num,
+    controller = Process(target=runController, args=(image_num,
                                                      video_num,
                                                      c2wQueues,
                                                      w2cQueues,
                                                      imgQueues,
-                                                     config
+                                                     models
                                                      )
                          )
     

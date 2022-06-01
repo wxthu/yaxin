@@ -1,18 +1,18 @@
 
 from load_mock_data import load_mock_data
-import time
+from analysis import Analyser
+import torch
 
 class Controller:
     """
     作为Controller, 监视所有的Worker
     """
-    def __init__(self, detector_num=3, img_num=800, config=None,
-                c2wQueues=None, w2cQueues=None, imgQueues=None):
+    def __init__(self, img_num=800, model_configs=None, c2wQueues=None, w2cQueues=None, imgQueues=None):
         """ 
         two-way communiaction to prevent message contention
         """
-        self.detector_num = detector_num
-        self.load_state = [False for _ in range(detector_num)]
+        self.detector_num = len(model_configs)
+        self.load_state = [False for _ in range(self.detector_num)]
         self.act_id = None
         self.next_id = None
         self.candidate = []
@@ -20,14 +20,29 @@ class Controller:
         self.c2wQueues = c2wQueues
         self.w2cQueues = w2cQueues
         self.imgQueues = imgQueues
-        self.exitSignal = 0  # when all workers finished job, exitSignal == detector_num
         self.cmds = []  # batch number 
         self.deadlines = []
         self.round = 0 
         self.cursor = 0 
         self.task_num = 0 # record the number of tasks at the moment
         self.total_requests = 0
-        self.config = config  # list, each element is dictionary
+        self.config = []  # list, each element is dictionary
+        self.models = []
+        self.model_flops = []
+        self.model_mlt = []
+        
+        for m in model_configs:
+            self.config.append(m.pop())
+            self.models.append(Analyser(m.pop()))
+            
+        print('*** Controller needs to collect models properties and wait for a while .. ***')
+        for m in self.models:
+            fake_img = torch.randn(1, 3, 384, 640).cuda()
+            m(fake_img)
+            self.model_flops.append(m.flops)
+            self.model_mlt.append(m.mlt)
+        torch.cuda.empty_cache()
+        print('##### Controller init success #####')
         
     def initialization(self):
         for q in range(len(self.imgQueues)):
