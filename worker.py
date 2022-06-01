@@ -57,21 +57,23 @@ class Worker:
         self.imgQueue = imgQueue
         self.time_stamp = time_stamp
         self.imgs = 0
-        self.hasInfered = False # Set a flag to avoid the case where controller hasn't put img into imgQueue
+        self.has_started = False 
         self.loaded = False     # To indicate whether model has loaded into GPU
     
     def run(self):
-        self.time_stamp.append(time.time())
         
         while True:
             command = None if self.c2wQueue.empty() else self.c2wQueue.get()
+            if not self.has_started and command is not None:
+                self.time_stamp.append(time.time())
+                self.has_started = True
+                
             if command == 'to_load':
                 self.engine.load_model()
                 self.loaded = True
                     
             if command == 'to_infer':
                 assert self.loaded == True
-                self.hasInfered = True
                 assert not self.imgQueue.empty()
                 
                 while self.c2wQueue.empty():
