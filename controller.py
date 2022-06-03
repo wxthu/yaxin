@@ -59,7 +59,7 @@ class Controller:
         
         for i, (batch, ddl) in enumerate(zip(cmd, ddls)):
             if batch:
-                srt = (sum(ddl) - self.config[i][batch][1]['infer_time']) / batch
+                srt = sum(ddl) - self.config[i][batch][1]['infer_time']
                 self.candidate.append([i, batch, srt])
         
         self.candidate.sort(key=lambda obj: obj[2])
