@@ -95,13 +95,13 @@ class Controller:
         self.act_id = self.candidate[0].id
         self.aux_id, stop_module_index = self.determine_parallel_ops()
         self.aux_new_cur_mod = stop_module_index   # possible to get -1
-        self.c2wQueues[self.act_id].put(pickle.dumps(['loading', self.candidate[0].module_num]))
-        self.c2wQueues[self.act_id].put(pickle.dumps(['inference', self.candidate[0].bs]))
+        self.c2wQueues[self.act_id].put(pickle.dumps(['loading', self.candidate[0].module_num, self.candidate[0].bs]))
+        self.c2wQueues[self.act_id].put(pickle.dumps(['inference']))
         self.load_state[self.act_id] = True
         
         if self.aux_id >= 0: 
-            self.c2wQueues[self.aux_id].put(pickle.dumps(['loading', stop_module_index]))
-            self.c2wQueues[self.aux_id].put(pickle.dunps(['inference', self.candidate[1].bs]))
+            self.c2wQueues[self.aux_id].put(pickle.dumps(['loading', stop_module_index, self.candidate[1].bs]))
+            self.c2wQueues[self.aux_id].put(pickle.dunps(['inference']))
         
         self.load_time_limit = self.get_predicted_latency(self.candidate[0].module_num, stop_module_index)
         self.actives = [self.act_id] if self.aux_id < 0 else [self.act_id, self.aux_id]
@@ -112,7 +112,8 @@ class Controller:
         flops1 = self.get_module_flops(self.candidate[0].id, self.candidate[0].cur_mod, stop1)
         flops2 = self.get_module_flops(self.candidate[1].id, self.candidate[1].cur_mod, stop2)
         
-        return self.regressor.predict(np.array([self.candidate[0].bs, self.candidate[1].bs, flops1, flops2]).reshape(1,4))
+        return self.regressor.predict(
+            np.array([self.candidate[0].bs, self.candidate[1].bs, flops1, flops2]).reshape(1,4))
         
     
     # Shortest Remaining Time scheduling strategy
@@ -141,28 +142,26 @@ class Controller:
             # Pipeline: loading next model while current inference
             if self.next_act_id >= 0 and self.load_state[self.next_act_id] is False:
                 self.c2wQueues[self.act_id].put(pickle.dumps(
-                    ['loading', self.candidate[0].module_num]))
+                    ['loading', self.candidate[0].module_num, self.candidate[0].bs]))
                 self.load_state[self.next_act_id] = True
             if self.next_aux_id >= 0 and self.load_state[self.next_act_id] is False:
                 self.c2wQueues[self.next_aux_id].put(pickle.dumps(
-                    ['loading', self.aux_new_cur_mod]))
+                    ['loading', self.aux_new_cur_mod, self.candidate[1].bs]))
                 if self.both_full:
                     self.load_state[self.next_aux_id] = True
             self.l_count = 0
             
         if self.t_count >= 2:
             if self.next_act_id >= 0:
-                self.c2wQueues[self.next_act_id].put(
-                    pickle.dumps(['inference', self.candidate[0].bs]))
+                self.c2wQueues[self.next_act_id].put(pickle.dumps(['inference']))
                 self.act_id = self.next_act_id
             if self.next_aux_id >= 0:
-                self.c2wQueues[self.next_aux_id].put(
-                    pickle.dumps(['inference', self.candidate[1].bs]))
+                self.c2wQueues[self.next_aux_id].put(pickle.dumps(['inference']))
                 self.aux_id = self.next_aux_id
                 
             self.compute_next_workers()
             self.load_time_limit = self.get_predicted_latency(
-                self.candidate[0].module_num, stop_module_index)
+                self.candidate[0].module_num, self.aux_new_cur_mod)
             self.t_count = 0
             self.actives = [self.act_id] if self.aux_id < 0 else [
                 self.act_id, self.aux_id]

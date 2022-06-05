@@ -1,4 +1,6 @@
 
+import pickle
+from sys import modules
 import torch
 import time 
 import numpy as np
@@ -6,21 +8,33 @@ import os
 from utils.torch_utils import time_sync
 
 class Detect:
-    def __init__(self, model):
+    def __init__(self, model, modules):
         self.model = model[1].eval()
         self.name = model[0]
         self.device = 'cpu'
         self.match_pair=dict()
         self.model._apply(self.pin_memory)
-        # self.stms = [torch.cuda.Stream() for _ in range(2)]
-            
-    def pre_hook(self, strm):
+        self.modules = modules
+        self.start_imod = -1
+        self.stop_imod = -1     # inference cursor
+        self.start_lmod = 0
+        self.stop_lmod = 0      # loading cursor
+        self.finish_partial = False
+        self.finish_complete = False
+                    
+    def pre_hook(self):
         def forward_pre_hook(module, data_input):
             if len(list(module.children())) == 0 and len(list(module.parameters())) > 0:
-                with torch.cuda.stream(strm):
-                    module._apply(self.to_cuda)
-                torch.cuda.synchronize()
-        
+                # if self.start_imod >= self.stop_imod:
+                #     print('### module block finished execution and waits for signal ...')
+                while True:
+                    if self.start_imod < self.stop_imod:                    
+                        break
+                    
+                self.start_imod += 1
+                if self.start_imod == self.stop_imod:
+                    self.finish_partial = True
+                                
         return forward_pre_hook
             
     def pin_memory(self, tensor):
@@ -32,7 +46,6 @@ class Detect:
         self.match_pair[param] = param.data
         return new
 
-    # This function is suitable for all the models in torchvision, except yolov5s, yolov5x
     def to_cpu(self, param):
         if param in self.match_pair:
             return self.match_pair[param]
@@ -42,7 +55,9 @@ class Detect:
     def load_model(self):
         self.device = 'cuda'
         os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-        self.model._apply(self.to_cuda)
+        # self.model._apply(self.to_cuda)
+        for i in range(self.start_lmod, self.stop_lmod):
+            self.modules[i]._apply(self.to_cuda)
         
     def release_model(self):
         self.device = 'cpu'
@@ -55,8 +70,8 @@ class Detect:
     def run(self, w_id, im):
         
         print(f'worker {w_id} : data shape is {im.shape} ')  
-        
-        # with torch.cuda.stream(self.stms[1]):
+        handler = torch.nn.modules.module.register_module_forward_pre_hook(self.pre_hook())
+
         dt = []
         t1 = time_sync()
         # Inference
@@ -67,7 +82,9 @@ class Detect:
         # Print results
         t = tuple(x * 1E3 for x in dt)
         print(f'Speed: %.1fms inference, worker id :%d' % (t + (w_id,)))
-    
+        handler.remove()
+        self.finish_partial = False
+        self.finish_complete = True
 
 class Worker:
     
@@ -83,48 +100,58 @@ class Worker:
         self.img_count = 0
         self.imgs = []
         self.has_started = False
-        self.strms = [torch.cuda.Stream() for _ in range(2)]
         
     def run(self):
         
         while True:
-            command = None if self.c2wQueue.empty() else self.c2wQueue.get()
+            command = None if self.c2wQueue.empty() else pickle.loads(self.c2wQueue.get())
             if not self.has_started and command is not None:
                 self.time_stamp.append(time.time())
                 self.has_started = True
-                
-            if command == 'loading':
-                with torch.cuda.stream(self.strms[0]):
+            
+            if command is not None:    
+                if command[0] == 'loading':
+                    self.engine.stop_lmod = command[1]
                     self.engine.load_model() 
                     
                     while self.c2wQueue.empty():
                         pass
                     
-                    bs = self.c2wQueue.get()
-                    for _ in range(int(bs)):
-                        if self.imgQueue.qsize() > 0:
-                            self.img_count = self.imgQueue.get()
-                            self.imgs.append(np.zeros(shape=(384, 640, 3)))
-                    assert len(self.imgs) > 0
+                    if self.engine.start_lmod == 0:
+                        for _ in range(command[2]):
+                            if self.imgQueue.qsize() > 0:
+                                self.img_count = self.imgQueue.get()
+                                self.imgs.append(np.zeros(shape=(384, 640, 3)))
+                        assert len(self.imgs) > 0
+                        
+                        self.imgs = np.stack(self.imgs).transpose((0, 3, 1, 2))
+                        self.imgs = np.ascontiguousarray(self.imgs)
+                        self.imgs = torch.from_numpy(self.imgs).type(torch.FloatTensor).cuda()
                     
-                    self.imgs = np.stack(self.imgs).transpose((0, 3, 1, 2))
-                    self.imgs = np.ascontiguousarray(self.imgs)
-                    self.imgs = torch.from_numpy(self.imgs).type(torch.FloatTensor).cuda()
+                    self.engine.stop_lmod = command[1]
+                    self.engine.stop_imod = command[1]
+                    torch.cuda.synchronize()
+                    self.w2cQueue.put('load_over')
+                    pred = self.engine.run(self.id, self.imgs)
+                    
+                if command[0] == 'inference':
+                    if self.engine.stop_imod == len(self.engine.modules):
+                        while True:
+                            if self.engine.finish_complete:
+                                self.w2cQueue.put('task_over')
+                                self.engine.release_model()    
+                                self.engine.finish_complete = False
+                    else:
+                        while True:
+                            if self.engine.finish_complete:
+                                self.w2cQueue.put('partial_task_over')
+                                self.engine.finish_partial = False
+                    
+                    self.imgs.clear()
 
-                torch.cuda.synchronize()
-                self.w2cQueue.put('load_over')
-                
-            if command == 'inference':
-
-                pred = self.engine.run(self.id, self.imgs)
-                self.w2cQueue.put('task_over')
-                with torch.cuda.stream(self.strms[1]):
-                    self.engine.release_model()
-                    self.imgs = []
-
-            if command == 'exit':
-                print(f'worker {self.id} processed image number : {self.img_count} and to exit ...')
-                break
+                if command == 'exit':
+                    print(f'worker {self.id} processed image number : {self.img_count} and to exit ...')
+                    break
                 
         self.time_stamp.append(time.time())
         return              
