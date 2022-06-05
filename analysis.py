@@ -13,17 +13,23 @@ class ForwardModule(nn.Module):
         return self.module(x)
 
 class Analyser:
-    def __init__(self, model) -> None:
+    def __init__(self, model, id) -> None:
         self.model = model.eval()
+        self.id = id
         self.module_pair = list()
         self.flops = []
         self.mlt = [] # module loading time
+        self.module_num = 0
+        self.bs = 0
+        self.ddl = 0
+        self.lat = 0
+        self.srt = 0
+        self.cur_mod = 0 # denotes the current model module to execute
         
         self.model._apply(self.pinned_memory)
     
     def __call__(self, img):
         self.run(img)
-        # self.model.cpu()
     
     def pinned_memory(self, tensor):
         return tensor.pin_memory()
@@ -40,6 +46,7 @@ class Analyser:
     def flops_hook(self):      
         def forward_pre_hook(module, data_input):
             if len(list(module.children())) == 0 and len(list(module.parameters())) > 0:
+                self.module_num += 1
                 assert len(data_input) == 1
                 self.module_pair.append([module, data_input[0].shape])
                 start = time_sync()
