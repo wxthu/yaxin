@@ -1,6 +1,6 @@
 
 import pickle
-from sys import modules
+from threading import Thread
 import torch
 import time 
 import numpy as np
@@ -12,8 +12,7 @@ class Detect:
         self.model = model[1].eval()
         self.name = model[0]
         self.device = 'cpu'
-        self.match_pair=dict()
-        self.model._apply(self.pin_memory)
+        self.match_pair = dict()
         self.modules = modules
         self.start_imod = -1
         self.stop_imod = -1     # inference cursor
@@ -21,6 +20,7 @@ class Detect:
         self.stop_lmod = 0      # loading cursor
         self.finish_partial = False
         self.finish_complete = False
+        self.model._apply(self.pin_memory)
                     
     def pre_hook(self):
         def forward_pre_hook(module, data_input):
@@ -88,10 +88,9 @@ class Detect:
 
 class Worker:
     
-    def __init__(self, id, batchsize, c2wQueue, w2cQueue, imgQueue, time_stamp, model):
+    def __init__(self, id, modules, c2wQueue, w2cQueue, imgQueue, time_stamp, model):
         self.id = id
-        self.batchsize = batchsize
-        self.engine = Detect(model)
+        self.engine = Detect(model, modules)
         self.name = model[0]
         self.c2wQueue = c2wQueue
         self.w2cQueue = w2cQueue
@@ -128,13 +127,15 @@ class Worker:
                         self.imgs = np.ascontiguousarray(self.imgs)
                         self.imgs = torch.from_numpy(self.imgs).type(torch.FloatTensor).cuda()
                     
-                    self.engine.stop_lmod = command[1]
-                    self.engine.stop_imod = command[1]
+                    self.engine.start_lmod = command[1]
                     torch.cuda.synchronize()
                     self.w2cQueue.put('load_over')
-                    pred = self.engine.run(self.id, self.imgs)
+                    
+                    ithread = Thread(target=self.engine.run, args=(self.id, self.imgs))
+                    ithread.start()
                     
                 if command[0] == 'inference':
+                    self.engine.stop_imod = self.engine.stop_lmod
                     if self.engine.stop_imod == len(self.engine.modules):
                         while True:
                             if self.engine.finish_complete:

@@ -10,11 +10,11 @@ class Controller:
     """
     作为Controller, 监视所有的Worker
     """
-    def __init__(self, img_num=800, model_configs=None, c2wQueues=None, w2cQueues=None, imgQueues=None):
+    def __init__(self, img_num=800, configs=None, models=None, c2wQueues=None, w2cQueues=None, imgQueues=None):
         """ 
         two-way communiaction to prevent message contention
         """
-        self.detector_num = len(model_configs)
+        self.detector_num = len(configs)
         self.load_state = [False for _ in range(self.detector_num)]
         self.candidate = []
         self.act_id = None
@@ -34,22 +34,22 @@ class Controller:
         self.round = 0 
         self.task_num = 0 # record the number of tasks at the moment
         self.total_requests = 0
-        self.config = []  # list, each element is dictionary
-        self.models = []
+        self.config = configs  # list, each element is dictionary
+        self.models = models
         self.load_time_limit = 10000000
         self.both_full = False # denote whether parallerl op groups have reached the end of models
         self.regressor = joblib.load('./train/lat_pred.pkl')
         
-        for i, m in enumerate(model_configs):
-            self.config.append(m.pop())
-            self.models.append(Analyser(m.pop(), i))
+        # for i, m in enumerate(model_configs):
+        #     self.config.append(m.pop())
+        #     self.models.append(Analyser(m.pop(), i))
             
-        print('*** Controller needs to collect models properties and wait for a while .. ***')
-        for m in self.models:
-            fake_img = torch.randn(1, 3, 384, 640).cuda()
-            m(fake_img)
+        # print('*** Controller needs to collect models properties and wait for a while .. ***')
+        # for m in self.models:
+        #     fake_img = torch.randn(1, 3, 384, 640).cuda()
+        #     m(fake_img)
             
-        torch.cuda.empty_cache()
+        # torch.cuda.empty_cache()
         print('##### Controller init success #####')
         
     def initialization(self):

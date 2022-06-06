@@ -16,7 +16,8 @@ class Analyser:
     def __init__(self, model, id) -> None:
         self.model = model.eval()
         self.id = id
-        self.module_pair = list()
+        self.modules = list()
+        self.mShape = list()
         self.flops = []
         self.mlt = [] # module loading time
         self.module_num = 0
@@ -40,7 +41,7 @@ class Analyser:
         self.model.cpu()
 
         handler.remove()
-        for module,shape in self.module_pair:
+        for module,shape in zip(self.modules, self.mShape):
             self.flops.append(2 * Profiler(ForwardModule(module), {'x':torch.randn(shape)}).profile().macs)
     
     def flops_hook(self):      
@@ -48,7 +49,8 @@ class Analyser:
             if len(list(module.children())) == 0 and len(list(module.parameters())) > 0:
                 self.module_num += 1
                 assert len(data_input) == 1
-                self.module_pair.append([module, data_input[0].shape])
+                self.modules.append(module)
+                self.mShape.append(data_input[0].shape)
                 start = time_sync()
                 module.cuda()
                 end = time_sync()

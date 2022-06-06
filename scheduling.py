@@ -9,23 +9,18 @@ import argparse
 import multiprocessing
 from multiprocessing import Process, Queue, Manager
 import random
+import torch
 
 from torchvision.models.resnet import resnet18, resnet34, resnet50, resnet101, resnet152
 from torchvision.models import alexnet, vgg16, vgg13, vgg11, squeezenet1_0, squeezenet1_1
 from utils.general import check_requirements, print_args
 from controller import Controller
 from worker import Worker
+from analysis import Analyser
 
-
-def runWorker(i,
-            batchsize, 
-            c2wQueue,
-            w2cQueue,
-            imgQueue, 
-            time_stamp,
-            model):
+def runWorker(i, modules, c2wQueue, w2cQueue, imgQueue, time_stamp, model):
     worker = Worker(i,
-                    batchsize, 
+                    modules, 
                     c2wQueue=c2wQueue,
                     w2cQueue=w2cQueue,
                     imgQueue=imgQueue, 
@@ -34,14 +29,13 @@ def runWorker(i,
                     )
     worker.run()
 
-def runController(image_num,
-                  video_num,
-                  c2wQueues,
-                  w2cQueues, 
-                  imgQueues,
-                  model_configs):
-    controller = Controller(img_num=image_num*video_num, model_configs=model_configs,
-                            c2wQueues=c2wQueues, w2cQueues=w2cQueues, imgQueues=imgQueues)
+def runController(image_num, video_num, c2wQueues, w2cQueues, imgQueues,  configs, models):
+    controller = Controller(img_num=image_num*video_num, 
+                            configs=configs,
+                            models=models,
+                            c2wQueues=c2wQueues, 
+                            w2cQueues=w2cQueues, 
+                            imgQueues=imgQueues)
     controller.run()
 
 def parse_opt():
@@ -81,19 +75,35 @@ def main(opt):
     w2cQueues = [Queue(MAX_Q_NUM) for _ in range(workers_num)]
     imgQueues = [Queue(MAX_Q_NUM) for _ in range(workers_num)]
     
+    fake_img = torch.zeros(1, 3, 384, 640).cuda()
+    analysers = []
+    configs = []
+
+    for i, mod in enumerate(models):
+        analysers.append(Analyser(mod[1], i))
+        configs.append(mod[2])
+    
+    print('*** Scheduler begin to collect models properties and wait for a while .. ***')
+    
+    for m in analysers:
+        m(fake_img)
+        
+    print('*** Online profiling finished and begin to launch processes .. ***')
+        
     controller = Process(target=runController, args=(image_num,
                                                      video_num,
                                                      c2wQueues,
                                                      w2cQueues,
                                                      imgQueues,
-                                                     models
+                                                     configs,
+                                                     analysers
                                                      )
                          )
     
     detectors = [
                 Process(target=runWorker, 
                         args=(i,
-                                batchsize,
+                                analysers[i].modules,
                                 c2wQueues[i],
                                 w2cQueues[i],
                                 imgQueues[i], 
