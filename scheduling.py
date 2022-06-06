@@ -6,7 +6,7 @@ We often have following configs for testing:
 """
 
 import argparse
-import multiprocessing
+import multiprocessing as mp
 from multiprocessing import Process, Queue, Manager
 import random
 import torch
@@ -53,6 +53,7 @@ def parse_opt():
 
 def main(opt):
     check_requirements(exclude=('tensorboard', 'thop'))
+    mp.set_start_method('spawn')
     args_dict = vars(opt)
 
     strategies = ['infer_time', 'total_time', 'gpu_util']
@@ -87,7 +88,8 @@ def main(opt):
     
     for m in analysers:
         m(fake_img)
-        
+       
+    torch.cuda.empty_cache() 
     print('*** Online profiling finished and begin to launch processes .. ***')
         
     controller = Process(target=runController, args=(image_num,
@@ -96,7 +98,7 @@ def main(opt):
                                                      w2cQueues,
                                                      imgQueues,
                                                      configs,
-                                                     analysers
+                                                     models
                                                      )
                          )
     
@@ -116,6 +118,7 @@ def main(opt):
                 ]
 
     controller.start()
+    controller.join()
     
     for detector in detectors:
         detector.start()

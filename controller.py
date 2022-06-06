@@ -101,7 +101,7 @@ class Controller:
         
         if self.aux_id >= 0: 
             self.c2wQueues[self.aux_id].put(pickle.dumps(['loading', stop_module_index, self.candidate[1].bs]))
-            self.c2wQueues[self.aux_id].put(pickle.dunps(['inference']))
+            self.c2wQueues[self.aux_id].put(pickle.dumps(['inference']))
         
         self.load_time_limit = self.get_predicted_latency(self.candidate[0].module_num, stop_module_index)
         self.actives = [self.act_id] if self.aux_id < 0 else [self.act_id, self.aux_id]
