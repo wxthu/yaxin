@@ -141,55 +141,59 @@ class Controller:
                     self.task_num -= 1
                     increment = 2 if len(self.actives) == 1 else 1
                     self.t_count += increment
+                    print(f'+!!!!inf over  ,worker {id} and count: {self.t_count}')
                 elif command == 'partial_task_over':
                     self.load_state[id] = False
                     self.t_count += 1
+                    print(f'+!!!!PPinf over  ,worker {id} and count: {self.t_count}')
                 elif command == 'load_over':
                     self.load_state[id] = True
                     increment = 2 if len(self.actives) == 1 else 1
                     self.l_count += increment
+                    print(f'++++++++++++++ loadddd ,worker {id} and count: {self.l_count}')
                 elif command == 'partial_load_over':
                     self.load_state[id] = True
                     self.l_count += 1
+                    print(f'++PP++++++++++++ loadddd ,worker {id} and count: {self.l_count}')
                 else:
                     print(f'=== Unknown command: {command} ===')
                     assert False
                     
         if self.l_count >= 2:
             # Pipeline: loading next model while current inference
+            print(f'GGGGGGGGGGGGGGGGGGGGGGGG {self.aar}')
             print(f'load next and aux : {self.next_act_id}/{self.next_aux_id}')
             if self.next_act_id >= 0:
                 if not self.load_state[self.next_act_id]:
                     self.c2wQueues[self.next_act_id].put(pickle.dumps(
                         ['loading', self.candidate[0].module_num, self.candidate[0].bs]))
-                if self.next_aux_id < 0:
-                    self.l_count = 1
-                else:
-                    if not self.load_state[self.next_aux_id]:
-                        self.c2wQueues[self.next_aux_id].put(pickle.dumps(
-                            ['loading', self.aux_new_cur_mod, self.candidate[1].bs]))
-                        # if self.both_full:
-                        #     self.load_state[self.next_aux_id] = True
+                    print(f'ctrl send 1 lllll **********worker {self.next_act_id}*********')
+                if self.next_aux_id >= 0 and not self.load_state[self.next_aux_id]:
+                    self.c2wQueues[self.next_aux_id].put(pickle.dumps(
+                        ['loading', self.aux_new_cur_mod, self.candidate[1].bs]))
+                    print(f'ctrl send aux lllll **********worker {self.next_aux_id}*********')
                     self.l_count = 0
-            else:                
-                self.l_count = 0
+                else:
+                    self.l_count = 1
+            print(f'ctrl reset lcount : {self.next_act_id}&&{self.next_aux_id}')                            
             
         if self.t_count >= 2:
-            # print(f'next act and aux : {self.next_act_id}/{self.next_aux_id}')
+            print(f'next act and aux : {self.next_act_id}/{self.next_aux_id}')
+            print(self.load_state[self.next_act_id])
             if self.next_act_id >= 0:
                 if self.next_aux_id >= 0:
                     # make sure model parameters have loaded successfully
                     if self.load_state[self.next_act_id] and self.load_state[self.next_aux_id]:
-                        print('ctrl send 2 inf **************************')
+                        print(f'ctrl send 2 inf **********{self.next_act_id}${self.next_aux_id}***************')
                         self.c2wQueues[self.next_aux_id].put(pickle.dumps(['inference']))
                         self.aux_id = self.next_aux_id
-                        self.t_count = 0
+                        # self.t_count = 0
                         self.to_compute = True
                 else:
                     if self.load_state[self.next_act_id]:
-                        print('ctrl send 1 inf **************************')
+                        print(f'ctrl send 1 inf *****************worker {self.next_act_id}*********')
                         self.aux_id = -1
-                        self.t_count = 1
+                        # self.t_count = 1
                         self.to_compute = True
                         
                 if self.to_compute:
@@ -203,8 +207,13 @@ class Controller:
                     self.actives = [self.act_id] if self.aux_id < 0 else [self.act_id, self.aux_id]
                     self.aar = [self.act_id, self.aux_id, self.next_act_id, self.next_aux_id]
                     self.to_compute = False
-            else:
-                self.t_count = 0
+                    print(f'7777777 new aar : {self.aar} *******load count : {self.l_count}')
+                    if self.next_act_id >= 0:
+                        self.c2wQueues[self.next_act_id].put(pickle.dumps(['loading', self.candidate[0].module_num, self.candidate[0].bs]))
+                    if self.next_aux_id >= 0:
+                        self.c2wQueues[self.next_aux_id].put(pickle.dumps(['loading', self.candidate[1].module_num, self.candidate[1].bs]))
+        
+                    self.t_count = 0
                     
     
     def get_module_flops(self, model_id, start, stop):
@@ -266,6 +275,10 @@ class Controller:
         # set flag in order to update states later
         if selected == stop2:  
             self.both_full = True
+            
+        if selected == start2:
+            return -1, -1
+        
         return self.candidate[1].id, selected 
     
     def update_candidates_state(self):

@@ -28,9 +28,8 @@ class Detect:
         def forward_pre_hook(module, data_input):
             if len(list(module.children())) == 0 and len(list(module.parameters())) > 0:
                 while True:
-                    if self.start_imod < self.stop_imod:                    
+                    if self.start_imod < self.stop_imod:
                         break
-                    
                 self.start_imod += 1
                 if self.start_imod == self.stop_imod:
                     self.finish_partial = True
@@ -58,7 +57,6 @@ class Detect:
         # self.model._apply(self.to_cuda)
         for i in range(self.start_lmod, self.stop_lmod):
             self.modules[i]._apply(self.to_cuda)
-        print(f'======= model {self.id} finished loading : {self.stop_lmod==self.module_num} ========')
         
     def release_model(self):
         self.device = 'cpu'
@@ -70,7 +68,7 @@ class Detect:
     @torch.no_grad()
     def run(self, w_id, im):
         
-        print(f'worker {w_id} : data shape is {im.shape} ')  
+        # print(f'worker {w_id} : data shape is {im.shape} ')  
         handler = torch.nn.modules.module.register_module_forward_pre_hook(self.pre_hook())
 
         dt = []
@@ -82,9 +80,8 @@ class Detect:
         
         # Print results
         t = tuple(x * 1E3 for x in dt)
-        print(f'Speed: %.1fms inference, worker id :%d' % (t + (w_id,)))
+        # print(f'Speed: %.1fms inference, worker id :%d' % (t + (w_id,)))
         handler.remove()
-        self.finish_partial = False
         self.finish_complete = True
 
 class Worker:
@@ -100,6 +97,7 @@ class Worker:
         self.img_count = 0
         self.imgs = []
         self.ithread = None
+        self.loaded = False
         self.has_started = False
         
     def run(self):
@@ -115,9 +113,6 @@ class Worker:
                     self.engine.stop_lmod = command[1]
                     self.engine.load_model() 
                     
-                    # while self.c2wQueue.empty():
-                    #     pass
-                    
                     if self.engine.start_lmod == 0:
                         for _ in range(command[2]):
                             if self.imgQueue.qsize() > 0:
@@ -131,15 +126,15 @@ class Worker:
                     
                     self.engine.start_lmod = command[1]
                     torch.cuda.synchronize()
+                    self.loaded = True
                     signal = 'load_over' if self.engine.stop_lmod == self.engine.module_num else 'partial_load_over'
                     self.w2cQueue.put(signal)
-                    print(f'^^^^^^ worker {self.id} send {signal} ^^^^^^^')
                     self.ithread = Thread(target=self.engine.run, args=(self.id, self.imgs))
                     self.ithread.start()
                     
                 if command[0] == 'inference':
                     self.engine.stop_imod = self.engine.stop_lmod
-                    if self.engine.stop_imod == len(self.engine.modules):
+                    if self.engine.stop_imod == self.engine.module_num:
                         while True:
                             if self.engine.finish_complete:
                                 self.w2cQueue.put('task_over')
@@ -148,7 +143,7 @@ class Worker:
                                 break
                     else:
                         while True:
-                            if self.engine.finish_complete:
+                            if self.engine.finish_partial:
                                 self.w2cQueue.put('partial_task_over')
                                 self.engine.finish_partial = False
                                 break
