@@ -8,12 +8,14 @@ import os
 from utils.torch_utils import time_sync
 
 class Detect:
-    def __init__(self, model, modules):
+    def __init__(self, model, modules, id):
         self.model = model[1].eval()
         self.name = model[0]
+        self.id = id
         self.device = 'cpu'
         self.match_pair = dict()
         self.modules = modules
+        self.module_num = len(modules)
         self.start_imod = -1
         self.stop_imod = -1     # inference cursor
         self.start_lmod = 0
@@ -25,8 +27,6 @@ class Detect:
     def pre_hook(self):
         def forward_pre_hook(module, data_input):
             if len(list(module.children())) == 0 and len(list(module.parameters())) > 0:
-                # if self.start_imod >= self.stop_imod:
-                #     print('### module block finished execution and waits for signal ...')
                 while True:
                     if self.start_imod < self.stop_imod:                    
                         break
@@ -58,6 +58,7 @@ class Detect:
         # self.model._apply(self.to_cuda)
         for i in range(self.start_lmod, self.stop_lmod):
             self.modules[i]._apply(self.to_cuda)
+        print(f'======= model {self.id} finished loading : {self.stop_lmod==self.module_num} ========')
         
     def release_model(self):
         self.device = 'cpu'
@@ -90,7 +91,7 @@ class Worker:
     
     def __init__(self, id, modules, c2wQueue, w2cQueue, imgQueue, time_stamp, model):
         self.id = id
-        self.engine = Detect(model, modules)
+        self.engine = Detect(model, modules, id)
         self.name = model[0]
         self.c2wQueue = c2wQueue
         self.w2cQueue = w2cQueue
@@ -98,6 +99,7 @@ class Worker:
         self.time_stamp = time_stamp
         self.img_count = 0
         self.imgs = []
+        self.ithread = None
         self.has_started = False
         
     def run(self):
@@ -113,8 +115,8 @@ class Worker:
                     self.engine.stop_lmod = command[1]
                     self.engine.load_model() 
                     
-                    while self.c2wQueue.empty():
-                        pass
+                    # while self.c2wQueue.empty():
+                    #     pass
                     
                     if self.engine.start_lmod == 0:
                         for _ in range(command[2]):
@@ -129,10 +131,11 @@ class Worker:
                     
                     self.engine.start_lmod = command[1]
                     torch.cuda.synchronize()
-                    self.w2cQueue.put('load_over')
-                    
-                    ithread = Thread(target=self.engine.run, args=(self.id, self.imgs))
-                    ithread.start()
+                    signal = 'load_over' if self.engine.stop_lmod == self.engine.module_num else 'partial_load_over'
+                    self.w2cQueue.put(signal)
+                    print(f'^^^^^^ worker {self.id} send {signal} ^^^^^^^')
+                    self.ithread = Thread(target=self.engine.run, args=(self.id, self.imgs))
+                    self.ithread.start()
                     
                 if command[0] == 'inference':
                     self.engine.stop_imod = self.engine.stop_lmod
@@ -142,15 +145,19 @@ class Worker:
                                 self.w2cQueue.put('task_over')
                                 self.engine.release_model()    
                                 self.engine.finish_complete = False
+                                break
                     else:
                         while True:
                             if self.engine.finish_complete:
                                 self.w2cQueue.put('partial_task_over')
                                 self.engine.finish_partial = False
+                                break
                     
-                    self.imgs.clear()
+                    self.imgs = []
 
                 if command == 'exit':
+                    if self.ithread is not None:
+                        self.ithread.join()
                     print(f'worker {self.id} processed image number : {self.img_count} and to exit ...')
                     break
                 

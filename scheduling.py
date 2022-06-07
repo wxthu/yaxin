@@ -54,6 +54,7 @@ def parse_opt():
 def main(opt):
     check_requirements(exclude=('tensorboard', 'thop'))
     mp.set_start_method('spawn')
+    torch.multiprocessing.set_sharing_strategy('file_system')
     args_dict = vars(opt)
 
     strategies = ['infer_time', 'total_time', 'gpu_util']
@@ -98,7 +99,7 @@ def main(opt):
                                                      w2cQueues,
                                                      imgQueues,
                                                      configs,
-                                                     models
+                                                     analysers
                                                      )
                          )
     
@@ -118,7 +119,6 @@ def main(opt):
                 ]
 
     controller.start()
-    controller.join()
     
     for detector in detectors:
         detector.start()
