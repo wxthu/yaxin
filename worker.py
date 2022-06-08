@@ -125,8 +125,7 @@ class Worker:
                     
                     self.engine.start_lmod = command[1]
                     torch.cuda.synchronize()
-                    signal = 'load_over' if self.engine.stop_lmod == self.engine.module_num else 'partial_load_over'
-                    self.w2cQueue.put(signal)
+                    self.w2cQueue.put('load_over')
                     self.ithread = Thread(target=self.engine.run, args=(self.id, self.imgs))
                     self.ithread.start()
                     
