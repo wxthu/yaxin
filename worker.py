@@ -80,7 +80,7 @@ class Detect:
         
         # Print results
         t = tuple(x * 1E3 for x in dt)
-        # print(f'Speed: %.1fms inference, worker id :%d' % (t + (w_id,)))
+        print(f'Speed: %.1fms inference, worker id :%d' % (t + (w_id,)))
         handler.remove()
         self.finish_complete = True
 
@@ -126,10 +126,12 @@ class Worker:
                     self.engine.start_lmod = command[1]
                     torch.cuda.synchronize()
                     self.w2cQueue.put('load_over')
+                    print(f'wwwwwwwww worker {self.id} loading overrrrrrrrrr')
                     self.ithread = Thread(target=self.engine.run, args=(self.id, self.imgs))
                     self.ithread.start()
                     
                 if command[0] == 'inference':
+                    print(f'@@@@@@@@@@@@@@ worker {self.id} receive INFERRRRRRRRRR')
                     self.engine.stop_imod = self.engine.stop_lmod
                     if self.engine.stop_imod == self.engine.module_num:
                         while True:
@@ -142,6 +144,7 @@ class Worker:
                         while True:
                             if self.engine.finish_partial:
                                 self.w2cQueue.put('partial_task_over')
+                                print(f'ppppppppppPartial task over for worker {self.id} ***********')
                                 self.engine.finish_partial = False
                                 break
                     

@@ -5,6 +5,7 @@ from analysis import Analyser
 import torch
 import joblib
 import numpy as np
+import time 
 
 class Controller:
     """
@@ -16,14 +17,17 @@ class Controller:
         """
         self.detector_num = len(configs)
         self.load_state = [False for _ in range(self.detector_num)]
+        self.infer_state = [False for _ in range(self.detector_num)]
         self.candidate = []
         self.act_id = -1
         self.aux_id = -1
         self.next_act_id = -1
         self.next_aux_id = -1
-        self.aar = list()  # active and ready workers
         self.tCursor = 0
         self.lCursor = 0
+        self.not_first_infer = False
+        self.not_first_load = False
+        self.last_completed = []
         # self.cCursor = 0  # used for computing next models when loading current models
         self.aux_stop_mod = 0
         self.img_num = img_num
@@ -96,35 +100,35 @@ class Controller:
         self.act_id = self.candidate[0].id
         self.candidate[0].cur_mod = self.candidate[0].module_num
         self.aux_id, self.aux_stop_mod, self.both_full = self.determine_parallel_ops()
-       
         self.notify_to_load([self.act_id, self.aux_id])
         # self.cCursor = self.lCursor if self.both_full or self.aux_id < 0 else self.lCursor - 1
             
         self.load_time_limit = self.get_predicted_latency(self.candidate[0].module_num, self.aux_stop_mod)
         self.compute_next_workers()
-        self.aar = [self.act_id, self.aux_id, self.next_act_id, self.next_aux_id]
-        self.round += 1
     
     def notify_to_load(self, ids):
         if self.lCursor >= len(self.candidate):
             print('***** no Data need to be loaded *****')
             return
-        
+
         for id in ids:
             if id >= 0 and not self.load_state[id]:
                 self.c2wQueues[id].put(
                     pickle.dumps(['loading', self.candidate[self.lCursor].cur_mod, self.candidate[self.lCursor].bs]))
+                print(f'####### id match test: {id} = {self.candidate[self.lCursor].id}')
                 self.lCursor += 1
-    
+        
     def notify_to_infer(self, ids):
         if self.tCursor >= len(self.candidate):
             print('***** no TASK needs to be processed *****')
             return
         
         for id in ids:
-            if id >= 0:
+            if id >= 0 and not self.infer_state[id] and self.load_state[id]:
                 self.c2wQueues[id].put(pickle.dumps(['inference']))
-                self.tCursor += 1  
+                self.tCursor += 1 
+                self.infer_state[id] = True 
+                print(f'---------------to notify w{id} to infer  and tCursor {self.tCursor} ------')
     
     def get_module_flops(self, model_id, start, stop):
         if stop <= start:
@@ -201,7 +205,7 @@ class Controller:
             selected -= 1
         
         if selected == start2:
-            return -1, False
+            return -1, -1, False
         
         self.candidate[1].cur_mod = selected
         flag = selected == stop2   # indicate whether both models will have finished tasks
@@ -214,8 +218,9 @@ class Controller:
             self.candidate.pop(0)
             
         if len(self.candidate) > 0:
-            for i, c in enumerate(self.candidate):
-                c[i].srt -= self.load_time_limit
+            for i in range(len(self.candidate)):
+                if i != 0 or self.both_full:
+                    self.candidate[i].srt -= self.load_time_limit
         
             self.candidate.sort(key=lambda obj: obj.srt)
             return True
@@ -225,49 +230,66 @@ class Controller:
     def compute_next_workers(self):
         notOver = self.update_candidates_state()
         self.next_act_id = self.candidate[0].id if notOver else -1
-        if self.next_act_id > 0:
+        if self.next_act_id >= 0:
+            self.candidate[0].cur_mod = self.candidate[0].module_num
+            print(f'^^^^^^^^^^^ compute next work: {self.next_act_id} and stop: {self.candidate[0].module_num}')
             self.next_aux_id, self.aux_stop_mod, self.both_full = self.determine_parallel_ops()
         else:
             self.next_aux_id = -1
             self.both_full = False
             
     # Shortest Remaining Time scheduling strategy
-    def update_cmd_queue(self):
+    def update_cmd_queue(self):    
         
-        if self.task_num == 0:
-            self.load_time_limit = 10000000
-            self.compute_candidates()
-        
-        for id in self.aar:  
+        for id in [self.act_id, self.aux_id, self.next_act_id, self.next_aux_id]:  
             if id >= 0:
                 command = None if self.w2cQueues[id].empty() else self.w2cQueues[id].get()
                 if command is not None:
-                    if command == 'task_over':
+                    if command.endswith('task_over'):
                         self.load_state[id] = False 
-                        self.task_num -= 1
+                        self.last_completed.append(id)
                         self.tCursor -= 1
-                    elif command == 'partial_task_over':
-                        self.load_state[id] = False
-                        self.tCursor -= 1
+                        self.not_first_infer = True
+                        print(f'&&&&& worker {id} finished and tCurosr : {self.tCursor} &&&&&&&&&')
+                        if command == 'task_over':
+                            self.task_num -= 1
                     elif command == 'load_over':
                         self.load_state[id] = True
+                        self.not_first_load = True
                         self.lCursor -= 1
                     else:
                         print(f'=== Unknown command: {command} ===')
                         assert False
-                    
-        if self.lCursor <= 0:
+                        
+        if self.task_num > 0:            
             # Pipeline: loading next model while current inference
-            self.notify_to_infer([self.act_id, self.aux_id])
-            self.notify_to_load([self.next_act_id, self.next_aux_id])       
-            
-        if self.tCursor <= 0:
-            self.notify_to_infer([self.next_act_id, self.next_aux_id])
-            self.act_id = self.next_act_id
-            self.aux_id = self.next_aux_id
-            self.compute_next_workers()
-            self.aar = [self.act_id, self.aux_id, self.next_act_id, self.next_aux_id]                    
-
+            if self.lCursor <= 0 and self.not_first_load:
+                self.notify_to_infer([self.act_id, self.aux_id])
+                print(f'ccccc Current load over and load next {self.next_act_id}/{self.next_aux_id}')
+                print(f'nnnnn system load state : {self.load_state}')
+                self.notify_to_load([self.next_act_id, self.next_aux_id])       
+                time.sleep(1)
+            if self.tCursor <= 0 and self.not_first_infer:
+                for w_id in self.last_completed:
+                    self.infer_state[w_id] = False
+                self.last_completed.clear()
+                
+                self.notify_to_infer([self.next_act_id, self.next_aux_id])
+                self.act_id = self.next_act_id
+                self.aux_id = self.next_aux_id
+                if len(self.candidate) > 0:
+                    self.load_time_limit = self.get_predicted_latency(self.candidate[0].module_num, self.aux_stop_mod)
+                self.compute_next_workers()
+                print(f'iiiiii Current infer img and load next {self.next_act_id}/{self.next_aux_id}')
+                self.notify_to_load([self.next_act_id, self.next_aux_id]) 
+                time.sleep(1)
+        else:
+            self.load_time_limit = 10000000
+            self.round += 1
+            self.not_first_load = False
+            self.not_first_infer = False
+            print(f'===================== next round : {self.round} ==========')
+            self.compute_candidates()
             
     def run(self):
         self.initialization()
