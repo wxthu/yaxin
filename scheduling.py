@@ -113,6 +113,7 @@ def main(opt):
                                 time_stamp,
                                 models[i]
                             )
+                        ,name="YAXIN-%d"%(i)
                         )
                             
                 for i in range(workers_num)

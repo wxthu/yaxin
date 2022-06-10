@@ -16,8 +16,8 @@ class Detect:
         self.match_pair = dict()
         self.modules = modules
         self.module_num = len(modules)
-        self.start_imod = -1
-        self.stop_imod = -1     # inference cursor
+        self.start_imod = 0
+        self.stop_imod = 0     # inference cursor
         self.start_lmod = 0
         self.stop_lmod = 0      # loading cursor
         self.finish_partial = False
@@ -30,9 +30,10 @@ class Detect:
                 while True:
                     if self.start_imod < self.stop_imod:
                         break
-                self.start_imod += 1
-                if self.start_imod == self.stop_imod:
+                
+                if self.start_imod + 1 == self.stop_imod:
                     self.finish_partial = True
+                self.start_imod += 1
                                 
         return forward_pre_hook
             
@@ -64,7 +65,15 @@ class Detect:
         self.match_pair.clear()
         
         torch.cuda.empty_cache()
-
+    
+    def reset_cursors(self):
+        self.start_imod = 0
+        self.stop_imod = 0     
+        self.start_lmod = 0
+        self.stop_lmod = 0     
+        self.finish_partial = False
+        self.finish_complete = False
+        
     @torch.no_grad()
     def run(self, w_id, im):
         
@@ -102,12 +111,13 @@ class Worker:
     def run(self):
         
         while True:
-            command = None if self.c2wQueue.empty() else pickle.loads(self.c2wQueue.get())
+            command = None if self.c2wQueue.empty() else self.c2wQueue.get()
             if not self.has_started and command is not None:
                 self.time_stamp.append(time.time())
                 self.has_started = True
             
             if command is not None:    
+                command = pickle.loads(command)
                 if command[0] == 'loading':
                     self.engine.stop_lmod = command[1]
                     self.engine.load_model() 
@@ -118,17 +128,18 @@ class Worker:
                                 self.img_count = self.imgQueue.get()
                                 self.imgs.append(np.zeros(shape=(384, 640, 3)))
                         assert len(self.imgs) > 0
-                        
                         self.imgs = np.stack(self.imgs).transpose((0, 3, 1, 2))
                         self.imgs = np.ascontiguousarray(self.imgs)
                         self.imgs = torch.from_numpy(self.imgs).type(torch.FloatTensor).cuda()
-                    
+
+                        self.ithread = Thread(target=self.engine.run, args=(self.id, self.imgs))
+                        self.ithread.start()
+                        
                     self.engine.start_lmod = command[1]
                     torch.cuda.synchronize()
                     self.w2cQueue.put('load_over')
                     print(f'wwwwwwwww worker {self.id} loading overrrrrrrrrr')
-                    self.ithread = Thread(target=self.engine.run, args=(self.id, self.imgs))
-                    self.ithread.start()
+                    
                     
                 if command[0] == 'inference':
                     print(f'@@@@@@@@@@@@@@ worker {self.id} receive INFERRRRRRRRRR')
@@ -138,7 +149,7 @@ class Worker:
                             if self.engine.finish_complete:
                                 self.w2cQueue.put('task_over')
                                 self.engine.release_model()    
-                                self.engine.finish_complete = False
+                                self.engine.reset_cursors()
                                 break
                     else:
                         while True:
