@@ -141,7 +141,7 @@ class Worker:
                     self.engine.start_lmod = command[1]
                     torch.cuda.synchronize()
                     self.w2cQueue.put('load_over')
-                    # print(f'wwwwwwwww worker {self.id} loading overrrrrrrrrr')
+                    print(f'wwwwwwwww worker {self.id} loading overrrrrrrrrr')
                     
                     
                 if command[0] == 'inference':
