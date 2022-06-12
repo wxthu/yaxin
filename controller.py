@@ -18,6 +18,7 @@ class Controller:
         self.detector_num = len(configs)
         self.load_state = [False for _ in range(self.detector_num)]
         self.infer_state = [False for _ in range(self.detector_num)]
+        self.if_full = [False for _ in range(self.detector_num)]
         self.candidate = []
         self.act_id = -1
         self.aux_id = -1
@@ -106,22 +107,31 @@ class Controller:
         self.load_time_limit = self.get_predicted_latency(self.candidate[0].module_num, self.aux_stop_mod)
         self.compute_next_workers()
 
+    def find_index(self, id):
+        for i, c in enumerate(self.candidate):
+            if c.id == id:
+                return i
+        return -1 
+                
     def notify_to_load(self, ids):
         if self.lCursor >= len(self.candidate):
             print(f'***** no Data need to be loaded  {self.lCursor}*****')
             return
 
         for id in ids:
-            if id >= 0 and not self.load_state[id]:
-                self.c2wQueues[id].put(
-                    pickle.dumps(['loading', self.candidate[self.lCursor].cur_mod, self.candidate[self.lCursor].bs]))
-                print(f'####### id match test: {id} = {self.candidate[self.lCursor].id}')
-                self.lCursor += 1
+            if id >= 0:
+                if not self.load_state[id] or not self.if_full[id]:
+                    index = self.find_index(id)
+                    assert index >= 0, 'Fail to find candiate to load...'
+                    self.c2wQueues[id].put(
+                        pickle.dumps(['loading', self.candidate[index].cur_mod, self.candidate[index].bs]))
+                    self.if_full[id] = self.candidate[index].cur_mod == self.candidate[index].module_num
+                    self.lCursor += 1
         
     def notify_to_infer(self, ids):
-        if self.tCursor >= len(self.candidate):
-            print(f'***** no TASK needs to be processed {self.tCursor}*****')
-            return
+        # if self.tCursor >= len(self.candidate):
+        #     print(f'***** no TASK needs to be processed {self.tCursor}/{len(self.candidate)}*****')
+        #     return
         
         for id in ids:
             if id >= 0 and not self.infer_state[id] and self.load_state[id]:
@@ -248,7 +258,7 @@ class Controller:
                 command = None if self.w2cQueues[id].empty() else self.w2cQueues[id].get()
                 if command is not None:
                     if command.endswith('task_over'):
-                        self.load_state[id] = False 
+                        # self.load_state[id] = False 
                         self.last_completed.append(id)
                         self.tCursor -= 1
                         self.not_first_infer = True
@@ -267,13 +277,15 @@ class Controller:
         # Pipeline: loading next model while current inference
         if self.lCursor <= 0 and self.not_first_load:
             self.notify_to_infer([self.act_id, self.aux_id])
-            print(f'ccccc Current load over and load next {self.next_act_id}/{self.next_aux_id}')
+            print(f'++++++++++++++++++ {self.act_id}/{self.aux_id}/{self.next_act_id}/{self.next_aux_id}')
             print(f'nnnnn system load state : {self.load_state}')
+            print(f'nnnnn system if_full state : {self.if_full}')
             self.notify_to_load([self.next_act_id, self.next_aux_id])       
             time.sleep(1)
         if self.tCursor <= 0 and self.not_first_infer:
             for w_id in self.last_completed:
                 self.infer_state[w_id] = False
+                # self.if_full[w_id] = False
             self.last_completed.clear()
             
             self.notify_to_infer([self.next_act_id, self.next_aux_id])
@@ -288,11 +300,16 @@ class Controller:
         
         if self.task_num <= 0: 
             self.load_time_limit = 10000000
-            self.not_first_load = False
-            self.not_first_infer = False
+            self.reset()
             self.round += 1
             self.compute_candidates()
-            
+    
+    def reset(self):
+        self.not_first_load = False
+        self.not_first_infer = False    
+        for i in range(self.detector_num):
+            self.load_state[i] = False
+            self.if_full[i] = False    
             
     def run(self):
         self.initialization()

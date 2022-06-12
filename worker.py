@@ -57,6 +57,9 @@ class Detect:
         os.environ["CUDA_VISIBLE_DEVICES"] = "0"
         # self.model._apply(self.to_cuda)
         for i in range(self.start_lmod, self.stop_lmod):
+            if i >= self.module_num:
+                print(f'WARN : {i}/sum up {self.module_num}')
+                print(f'start : {self.start_lmod}/ end {self.stop_lmod}')
             self.modules[i]._apply(self.to_cuda)
         
     def release_model(self):
@@ -138,11 +141,11 @@ class Worker:
                     self.engine.start_lmod = command[1]
                     torch.cuda.synchronize()
                     self.w2cQueue.put('load_over')
-                    print(f'wwwwwwwww worker {self.id} loading overrrrrrrrrr')
+                    # print(f'wwwwwwwww worker {self.id} loading overrrrrrrrrr')
                     
                     
                 if command[0] == 'inference':
-                    print(f'@@@@@@@@@@@@@@ worker {self.id} receive INFERRRRRRRRRR')
+                    # print(f'@@@@@@@@@@@@@@ worker {self.id} receive INFERRRRRRRRRR')
                     self.engine.stop_imod = self.engine.stop_lmod
                     if self.engine.stop_imod == self.engine.module_num:
                         while True:
