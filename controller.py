@@ -5,7 +5,6 @@ from analysis import Analyser
 import torch
 import joblib
 import numpy as np
-import time 
 
 class Controller:
     """
@@ -24,11 +23,8 @@ class Controller:
         self.aux_id = -1
         self.next_act_id = -1
         self.next_aux_id = -1
-        self.tCursor = 0
-        self.lCursor = 0
-        self.clCursor = 0
-        self.not_first_infer = False
-        self.not_first_load = False
+        self.tCursor = 0  # indicate whether current workers finished inference
+        self.lCursor = 0  # indicate whether next workers loading complete
         self.last_completed = []
         self.aux_stop_mod = 0
         self.img_num = img_num
@@ -46,16 +42,6 @@ class Controller:
         self.both_full = False # denote whether parallel op groups have reached the end of models
         self.regressor = joblib.load('./train/lat_pred.pkl')
         
-        # for i, m in enumerate(model_configs):
-        #     self.config.append(m.pop())
-        #     self.models.append(Analyser(m.pop(), i))
-            
-        # print('*** Controller needs to collect models properties and wait for a while .. ***')
-        # for m in self.models:
-        #     fake_img = torch.randn(1, 3, 384, 640).cuda()
-        #     m(fake_img)
-            
-        # torch.cuda.empty_cache()
         print('##### Controller init success #####')
         
     def initialization(self):
@@ -103,10 +89,8 @@ class Controller:
         self.next_act_id = self.candidate[0].id
         self.candidate[0].cur_mod = self.candidate[0].module_num
         self.next_aux_id, self.aux_stop_mod, self.both_full = self.determine_parallel_ops()
-        self.notify_to_load([self.next_act_id, self.next_aux_id])
-            
+        self.notify_to_load([self.next_act_id, self.next_aux_id]) 
         self.load_time_limit = self.get_predicted_latency(self.candidate[0].module_num, self.aux_stop_mod)
-        # self.compute_next_workers() 
     
     def find_index(self, id):
         for i, c in enumerate(self.candidate):
@@ -116,8 +100,6 @@ class Controller:
                 
     def notify_to_load(self, ids):
         if self.lCursor >= len(self.candidate):
-            print(f'***** To load worker  {ids}*****')
-            print(f'***** no Data need to be loaded  {self.lCursor}*****')
             return
 
         for id in ids:
@@ -131,16 +113,12 @@ class Controller:
                     self.lCursor += 1
         
     def notify_to_infer(self, ids):
-        # if self.tCursor >= len(self.candidate):
-        #     print(f'***** no TASK needs to be processed {self.tCursor}/{len(self.candidate)}*****')
-        #     return
         
         for id in ids:
             if id >= 0 and not self.infer_state[id] and self.load_state[id]:
                 self.c2wQueues[id].put(pickle.dumps(['inference']))
                 self.tCursor += 1 
                 self.infer_state[id] = True 
-                print(f'---------------to notify w{id} to infer  and tCursor {self.tCursor} ------')
     
     def get_module_flops(self, model_id, start, stop):
         if stop <= start:
@@ -182,7 +160,7 @@ class Controller:
         
         for i in range(1, len(self.candidate)):
             if self.candidate[i].ddl <= self.candidate[0].lat:
-                print('### urgent task need to be executed immediately ###')
+                print("\033[1;31m [WARN] urgent task need to be executed immediately \033[0m")
                 if i != 1:
                     self.swap_candidate(i, 1)
                 self.candidate[1].cur_mod = self.candidate[1].module_num
@@ -263,39 +241,37 @@ class Controller:
                     if command.endswith('task_over'):
                         self.last_completed.append(id)
                         self.tCursor -= 1
-                        self.not_first_infer = True
-                        print(f'&&&&& worker {id} finished and tCurosr : {self.tCursor} &&&&&&&&&')
                         if command == 'task_over':
                             self.task_num -= 1
                     elif command == 'load_over':
                         self.load_state[id] = True
-                        self.not_first_load = True
                         self.lCursor -= 1
-                        print(f'RRRRRRRRRRRRRRRRReceive w_{id} load and lcursor : {self.lCursor}')
                     else:
                         print(f'=== Unknown command: {command} ===')
                         assert False
                                        
         # Pipeline: loading next model while current inference
         if self.lCursor <= 0 and self.tCursor <= 0:
+            for w_id in self.last_completed:
+                self.infer_state[w_id] = False
+            self.last_completed.clear()
+            
             self.notify_to_infer([self.next_act_id, self.next_aux_id])
             self.act_id = self.next_act_id
             self.aux_id = self.next_aux_id
             if len(self.candidate) > 0:
                 self.load_time_limit = self.get_predicted_latency(self.candidate[0].module_num, self.aux_stop_mod)
             self.compute_next_workers()
-            print(f'iiiiii Current infer img and load next {self.next_act_id}/{self.next_aux_id} and candi length : {len(self.candidate)}')
             self.notify_to_load([self.next_act_id, self.next_aux_id]) 
         
         if self.task_num <= 0: 
             self.load_time_limit = 10000000
             self.reset()
             self.round += 1
+            print(f'\033[1;34m [ROUND] : {self.round}\033[0m')
             self.compute_candidates()
     
-    def reset(self):
-        self.not_first_load = False
-        self.not_first_infer = False    
+    def reset(self):   
         for i in range(self.detector_num):
             self.load_state[i] = False
             self.if_full[i] = False    

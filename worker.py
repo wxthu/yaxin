@@ -57,9 +57,6 @@ class Detect:
         os.environ["CUDA_VISIBLE_DEVICES"] = "0"
         # self.model._apply(self.to_cuda)
         for i in range(self.start_lmod, self.stop_lmod):
-            if i >= self.module_num:
-                print(f'WARN : {i}/sum up {self.module_num}')
-                print(f'start : {self.start_lmod}/ end {self.stop_lmod}')
             self.modules[i]._apply(self.to_cuda)
         
     def release_model(self):
@@ -80,7 +77,7 @@ class Detect:
     @torch.no_grad()
     def run(self, w_id, im):
         
-        # print(f'worker {w_id} : data shape is {im.shape} ')  
+        print(f'worker {w_id} : data shape is {im.shape} ')  
         handler = torch.nn.modules.module.register_module_forward_pre_hook(self.pre_hook())
 
         dt = []
@@ -114,13 +111,12 @@ class Worker:
     def run(self):
         
         while True:
-            command = None if self.c2wQueue.empty() else self.c2wQueue.get()
+            command = None if self.c2wQueue.empty() else pickle.loads(self.c2wQueue.get())
             if not self.has_started and command is not None:
                 self.time_stamp.append(time.time())
                 self.has_started = True
             
             if command is not None:    
-                command = pickle.loads(command)
                 if command[0] == 'loading':
                     self.engine.stop_lmod = command[1]
                     self.engine.load_model() 
@@ -140,12 +136,9 @@ class Worker:
                         
                     self.engine.start_lmod = command[1]
                     torch.cuda.synchronize()
-                    self.w2cQueue.put('load_over')
-                    print(f'wwwwwwwww worker {self.id} loading overrrrrrrrrr')
-                    
+                    self.w2cQueue.put('load_over')                    
                     
                 if command[0] == 'inference':
-                    # print(f'@@@@@@@@@@@@@@ worker {self.id} receive INFERRRRRRRRRR')
                     self.engine.stop_imod = self.engine.stop_lmod
                     if self.engine.stop_imod == self.engine.module_num:
                         while True:
@@ -158,7 +151,6 @@ class Worker:
                         while True:
                             if self.engine.finish_partial:
                                 self.w2cQueue.put('partial_task_over')
-                                print(f'ppppppppppPartial task over for worker {self.id} ***********')
                                 self.engine.finish_partial = False
                                 break
                     
