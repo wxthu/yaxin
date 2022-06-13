@@ -20,7 +20,6 @@ class Controller:
         self.c2wQueues = c2wQueues
         self.w2cQueues = w2cQueues
         self.imgQueues = imgQueues
-        self.exitSignal = 0  # when all workers finished job, exitSignal == detector_num
         self.cmds = []  # batch number 
         self.deadlines = []
         self.round = 0 
@@ -52,6 +51,8 @@ class Controller:
         at the start if each round and preloading the first model to 
         infer
         '''
+        if self.round >= len(self.cmds):
+            return 
         
         cmd = self.cmds[self.round]
         ddls = self.deadlines[self.round]
@@ -72,12 +73,12 @@ class Controller:
         self.c2wQueues[self.act_id].put(self.candidate[0][1])
         self.c2wQueues[self.act_id].put('inference')
         self.load_state[self.act_id] = True
-        self.round += 1
         self.cursor += 1
         self.next_id = self.candidate[self.cursor][0] if self.cursor < len(self.candidate) else None
         self.load_state[self.act_id] = True
-    
-    
+        self.round += 1
+        print(f'\033[1;34m [ROUND] : {self.round}\033[0m')
+        
     # Shortest Remaining Time scheduling strategy
     def update_cmd_queue(self):
         
