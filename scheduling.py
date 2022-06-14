@@ -165,22 +165,22 @@ if __name__ == "__main__":
                                            2:[312, {'infer_time':40.81, 'total_time':150.68, 'gpu_util':61}],
                                            3:[376, {'infer_time':63.33, 'total_time':173.2, 'gpu_util':68}],
                                            4:[432, {'infer_time':83.93, 'total_time':193.8, 'gpu_util':72}]}])
-    # models.append(['rnt152', resnet152(), {1:[334, {'infer_time':32.86, 'total_time':179.28, 'gpu_util':55}],
-    #                                        2:[354, {'infer_time':59.28, 'total_time':205.7, 'gpu_util':59}],
-    #                                        3:[400, {'infer_time':94.24, 'total_time':240.66, 'gpu_util':64}],
-    #                                        4:[494, {'infer_time':124.54, 'total_time':270.96, 'gpu_util':75}]}])
-    # models.append(['alexnet', alexnet(), {1:[264, {'infer_time':4.24, 'total_time':136.29, 'gpu_util':39}],
-    #                                       2:[264, {'infer_time':4.71, 'total_time':136.76, 'gpu_util':39}],
-    #                                       3:[276, {'infer_time':6.11, 'total_time':138.16, 'gpu_util':42}],
-    #                                       4:[292, {'infer_time':6.85, 'total_time':138.9, 'gpu_util':42}]}])
-    # models.append(['vgg11', vgg11(), {1:[618, {'infer_time':13.39, 'total_time':304.11, 'gpu_util':43}],
-    #                                   2:[742, {'infer_time':24.3, 'total_time':315.02, 'gpu_util':45}],
-    #                                   3:[848, {'infer_time':35.53, 'total_time':326.25, 'gpu_util':50}],
-    #                                   4:[944, {'infer_time':47.06, 'total_time':337.78, 'gpu_util':55}]}])
-    # models.append(['vgg13', vgg13(), {1:[634, {'infer_time':18.59, 'total_time':306.89, 'gpu_util':44}],
-    #                                   2:[774, {'infer_time':35.35, 'total_time':323.65, 'gpu_util':50}],
-    #                                   3:[894, {'infer_time':53.64, 'total_time':341.94, 'gpu_util':58}],
-    #                                   4:[1006, {'infer_time':73.81, 'total_time':362.11, 'gpu_util':66}]}])
+    models.append(['rnt152', resnet152(), {1:[334, {'infer_time':32.86, 'total_time':179.28, 'gpu_util':55}],
+                                           2:[354, {'infer_time':59.28, 'total_time':205.7, 'gpu_util':59}],
+                                           3:[400, {'infer_time':94.24, 'total_time':240.66, 'gpu_util':64}],
+                                           4:[494, {'infer_time':124.54, 'total_time':270.96, 'gpu_util':75}]}])
+    models.append(['alexnet', alexnet(), {1:[264, {'infer_time':4.24, 'total_time':136.29, 'gpu_util':39}],
+                                          2:[264, {'infer_time':4.71, 'total_time':136.76, 'gpu_util':39}],
+                                          3:[276, {'infer_time':6.11, 'total_time':138.16, 'gpu_util':42}],
+                                          4:[292, {'infer_time':6.85, 'total_time':138.9, 'gpu_util':42}]}])
+    models.append(['vgg11', vgg11(), {1:[618, {'infer_time':13.39, 'total_time':304.11, 'gpu_util':43}],
+                                      2:[742, {'infer_time':24.3, 'total_time':315.02, 'gpu_util':45}],
+                                      3:[848, {'infer_time':35.53, 'total_time':326.25, 'gpu_util':50}],
+                                      4:[944, {'infer_time':47.06, 'total_time':337.78, 'gpu_util':55}]}])
+    models.append(['vgg13', vgg13(), {1:[634, {'infer_time':18.59, 'total_time':306.89, 'gpu_util':44}],
+                                      2:[774, {'infer_time':35.35, 'total_time':323.65, 'gpu_util':50}],
+                                      3:[894, {'infer_time':53.64, 'total_time':341.94, 'gpu_util':58}],
+                                      4:[1006, {'infer_time':73.81, 'total_time':362.11, 'gpu_util':66}]}])
     models.append(['vgg16', vgg16(), {1:[674, {'infer_time':23.03, 'total_time':319.4, 'gpu_util':46}],
                                       2:[794, {'infer_time':44.92, 'total_time':341.29, 'gpu_util':55}],
                                       3:[914, {'infer_time':71.11, 'total_time':367.48, 'gpu_util':66}],

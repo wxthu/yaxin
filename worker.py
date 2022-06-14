@@ -1,6 +1,6 @@
 
 import pickle
-from threading import Thread
+from threading import Thread, Condition
 import torch
 import time 
 import numpy as np
@@ -8,10 +8,11 @@ import os
 from utils.torch_utils import time_sync
 
 class Detect:
-    def __init__(self, model, modules, id):
+    def __init__(self, model, modules, id, cond):
         self.model = model[1].eval()
         self.name = model[0]
         self.id = id
+        self.cond = cond
         self.device = 'cpu'
         self.match_pair = dict()
         self.modules = modules
@@ -20,21 +21,18 @@ class Detect:
         self.stop_imod = 0     # inference cursor
         self.start_lmod = 0
         self.stop_lmod = 0      # loading cursor
-        self.finish_partial = False
-        self.finish_complete = False
         self.model._apply(self.pin_memory)
                     
     def pre_hook(self):
         def forward_pre_hook(module, data_input):
             if len(list(module.children())) == 0 and len(list(module.parameters())) > 0:
-                while True:
-                    if self.start_imod < self.stop_imod:
-                        break
-                
-                if self.start_imod + 1 == self.stop_imod:
-                    self.finish_partial = True
-                self.start_imod += 1
-                                
+                with self.cond:
+                    if self.start_imod == self.stop_imod:
+                        self.cond.notify()
+                        self.cond.wait()
+                    
+                    self.start_imod += 1   
+                        
         return forward_pre_hook
             
     def pin_memory(self, tensor):
@@ -71,8 +69,6 @@ class Detect:
         self.stop_imod = 0     
         self.start_lmod = 0
         self.stop_lmod = 0     
-        self.finish_partial = False
-        self.finish_complete = False
         
     @torch.no_grad()
     def run(self, w_id, im):
@@ -91,13 +87,15 @@ class Detect:
         t = tuple(x * 1E3 for x in dt)
         print(f'Speed: %.1fms inference, worker id :%d' % (t + (w_id,)))
         handler.remove()
-        self.finish_complete = True
+        with self.cond:
+            self.cond.notify()
 
 class Worker:
     
     def __init__(self, id, modules, c2wQueue, w2cQueue, imgQueue, time_stamp, model):
         self.id = id
-        self.engine = Detect(model, modules, id)
+        self.cond = Condition()
+        self.engine = Detect(model, modules, id, self.cond)
         self.name = model[0]
         self.c2wQueue = c2wQueue
         self.w2cQueue = w2cQueue
@@ -111,56 +109,51 @@ class Worker:
     def run(self):
         
         while True:
-            command = None if self.c2wQueue.empty() else pickle.loads(self.c2wQueue.get())
+            command = pickle.loads(self.c2wQueue.get())
             if not self.has_started and command is not None:
                 self.time_stamp.append(time.time())
                 self.has_started = True
-            
-            if command is not None:    
-                if command[0] == 'loading':
-                    self.engine.stop_lmod = command[1]
-                    self.engine.load_model() 
-                    
-                    if self.engine.start_lmod == 0:
-                        for _ in range(command[2]):
-                            if self.imgQueue.qsize() > 0:
-                                self.img_count = self.imgQueue.get()
-                                self.imgs.append(np.zeros(shape=(384, 640, 3)))
-                        assert len(self.imgs) > 0
-                        self.imgs = np.stack(self.imgs).transpose((0, 3, 1, 2))
-                        self.imgs = np.ascontiguousarray(self.imgs)
-                        self.imgs = torch.from_numpy(self.imgs).type(torch.FloatTensor).cuda()
+                
+            if command[0] == 'loading':
+                self.engine.stop_lmod = command[1]
+                self.engine.load_model() 
+                
+                if self.engine.start_lmod == 0:
+                    for _ in range(command[2]):
+                        if self.imgQueue.qsize() > 0:
+                            self.img_count = self.imgQueue.get()
+                            self.imgs.append(np.zeros(shape=(384, 640, 3)))
+                    assert len(self.imgs) > 0
+                    self.imgs = np.stack(self.imgs).transpose((0, 3, 1, 2))
+                    self.imgs = np.ascontiguousarray(self.imgs)
+                    self.imgs = torch.from_numpy(self.imgs).type(torch.FloatTensor).cuda()
 
-                        self.ithread = Thread(target=self.engine.run, args=(self.id, self.imgs))
-                        self.ithread.start()
-                        
-                    self.engine.start_lmod = command[1]
-                    torch.cuda.synchronize()
-                    self.w2cQueue.put('load_over')                    
+                    self.ithread = Thread(target=self.engine.run, args=(self.id, self.imgs))
+                    self.ithread.start()
                     
-                if command[0] == 'inference':
+                self.engine.start_lmod = command[1]
+                torch.cuda.synchronize()
+                self.w2cQueue.put('load_over')                    
+                
+            if command[0] == 'inference':
+                with self.cond:
                     self.engine.stop_imod = self.engine.stop_lmod
-                    if self.engine.stop_imod == self.engine.module_num:
-                        while True:
-                            if self.engine.finish_complete:
-                                self.w2cQueue.put('task_over')
-                                self.engine.release_model()    
-                                self.engine.reset_cursors()
-                                break
-                    else:
-                        while True:
-                            if self.engine.finish_partial:
-                                self.w2cQueue.put('partial_task_over')
-                                self.engine.finish_partial = False
-                                break
+                    self.cond.notify()
+                    self.cond.wait()
                     
-                    self.imgs = []
-
-                if command == 'exit':
-                    if self.ithread is not None:
-                        self.ithread.join()
-                    print(f'worker {self.id} processed image number : {self.img_count} and to exit ...')
-                    break
+                    if self.engine.stop_imod == self.engine.module_num:
+                        self.w2cQueue.put('task_over')
+                        self.engine.release_model()    
+                        self.engine.reset_cursors()
+                        self.imgs = []
+                    else:
+                        self.w2cQueue.put('partial_task_over')
+                        
+            if command == 'exit':
+                if self.ithread is not None:
+                    self.ithread.join()
+                print(f'worker {self.id} processed image number : {self.img_count} and to exit ...')
+                break
                 
         self.time_stamp.append(time.time())
         return              
