@@ -67,6 +67,7 @@ class Controller:
     
     def update_cmd_queue(self):
         if self.task_num == 0:
+            print(f'\033[1;34m [ROUND] : {self.cursor}\033[0m')
             cmd = self.cmds[self.cursor]
             ddls = self.deadlines[self.cursor]
             self.batches.clear()
@@ -124,7 +125,6 @@ class Controller:
             while len(self.wait_ids) > 0:
                 ind = self.addWorker(reMem)
                 if ind < 0:
-                    # print(f'Unable to accommodate more models for the time being...')
                     break
                 else:
                     idx = self.wait_ids.index(ind)

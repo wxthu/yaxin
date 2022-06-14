@@ -63,7 +63,7 @@ class Worker:
     def run(self):
         
         while True:
-            command = None if self.c2wQueue.empty() else self.c2wQueue.get()
+            command = self.c2wQueue.get()
             if not self.has_started and command is not None:
                 self.time_stamp.append(time.time())
                 self.has_started = True
