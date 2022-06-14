@@ -86,7 +86,7 @@ class Worker:
         self.time_stamp.append(time.time())
         
         while True:
-            command = None if self.c2wQueue.empty() else self.c2wQueue.get()
+            command = self.c2wQueue.get()
             if command == 'loading':
                 with torch.cuda.stream(self.strms[0]):
                     self.engine.load_model() 
