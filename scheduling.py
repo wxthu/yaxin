@@ -4,7 +4,7 @@ We often have following configs for testing:
 (ii) sqt10, rnt18, rnt34, rnt101, yolov5s, yolov5x
 (iii)sqt11, rnt50, rnt152, vgg13, yolo5s, yolov5x
 """
-
+import torch.cuda.profiler as profiler
 import argparse
 import multiprocessing
 from multiprocessing import Process, Queue, Manager
@@ -60,6 +60,7 @@ def parse_opt():
 
 def main(opt):
     check_requirements(exclude=('tensorboard', 'thop'))
+    multiprocessing.set_start_method('spawn')
     args_dict = vars(opt)
 
     strategies = ['infer_time', 'total_time', 'gpu_util']
@@ -108,16 +109,16 @@ def main(opt):
                             
                 for i in range(workers_num)
                 ]
-
+   
+    profiler.start()
     controller.start()
-    
     for detector in detectors:
         detector.start()
 
     controller.join()
     for detector in detectors:
         detector.join()
-    
+    profiler.stop()
     warmup_overhead = 2.5
     duration = max(time_stamp) - min(time_stamp)
     print("***** The system end-to-end latency is : {:.3f}s *****".format(duration - warmup_overhead))

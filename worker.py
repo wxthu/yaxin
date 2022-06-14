@@ -12,10 +12,7 @@ class Detect:
         self.device = 'cpu'
         self.match_pair=dict()
         self.model._apply(self.pin_memory)
-        # self.stms = [torch.cuda.Stream() for _ in range(2)]
-        
-        # torch.nn.modules.module.register_module_forward_pre_hook(self.pre_hook(self.stms[0]))
-    
+            
     def pre_hook(self, strm):
         def forward_pre_hook(module, data_input):
             if len(list(module.children())) == 0 and len(list(module.parameters())) > 0:
@@ -58,7 +55,6 @@ class Detect:
         
         print(f'worker {w_id} : data shape is {im.shape} ')  
         
-        # with torch.cuda.stream(self.stms[1]):
         dt = []
         t1 = time_sync()
         # Inference
