@@ -17,7 +17,6 @@ class Controller:
         self.detector_num = len(configs)
         self.load_state = [False for _ in range(self.detector_num)]
         self.infer_state = [False for _ in range(self.detector_num)]
-        self.if_full = [False for _ in range(self.detector_num)]
         self.candidate = []
         self.act_id = -1
         self.aux_id = -1
@@ -25,8 +24,8 @@ class Controller:
         self.next_aux_id = -1
         self.tCursor = 0  # indicate whether current workers finished inference
         self.lCursor = 0  # indicate whether next workers loading complete
+        self.both = False
         self.last_completed = []
-        self.aux_stop_mod = 0
         self.img_num = img_num
         self.c2wQueues = c2wQueues
         self.w2cQueues = w2cQueues
@@ -39,7 +38,6 @@ class Controller:
         self.config = configs  # list, each element is dictionary
         self.models = models
         self.load_time_limit = 10000000
-        self.both_full = False # denote whether parallel op groups have reached the end of models
         self.regressor = joblib.load('./train/lat_pred.pkl')
         
         print('##### Controller init success #####')
@@ -87,14 +85,13 @@ class Controller:
         self.task_num = len(self.candidate)
 
         self.next_act_id = self.candidate[0].id
-        self.candidate[0].cur_mod = self.candidate[0].module_num
-        self.next_aux_id, self.aux_stop_mod, self.both_full = self.determine_parallel_ops()
+        self.next_aux_id, self.both = self.determine_parallel_model()
         self.notify_to_load([self.next_act_id, self.next_aux_id]) 
-        self.load_time_limit = self.get_predicted_latency(self.candidate[0].module_num, self.aux_stop_mod)
+        self.load_time_limit = self.get_predicted_latency(self.next_aux_id)
     
-    def find_index(self, id):
+    def find_index(self, ind):
         for i, c in enumerate(self.candidate):
-            if c.id == id:
+            if c.id == ind:
                 return i
         return -1 
                 
@@ -103,42 +100,35 @@ class Controller:
             return
 
         for id in ids:
-            if id >= 0:
-                if not self.load_state[id] or not self.if_full[id]:
-                    index = self.find_index(id)
-                    assert index >= 0, 'Fail to find candiate to load...'
-                    self.c2wQueues[id].put(
-                        pickle.dumps(['loading', self.candidate[index].cur_mod, self.candidate[index].bs]))
-                    self.if_full[id] = self.candidate[index].cur_mod == self.candidate[index].module_num
-                    self.lCursor += 1
+            if id >= 0 and not self.load_state[id]:
+                index = self.find_index(id)
+                assert index >= 0, 'Fail to find candiate to load...'
+                self.c2wQueues[id].put(pickle.dumps(['loading', self.candidate[index].bs]))
+                self.lCursor += 1
         
     def notify_to_infer(self, ids):
-        
         for id in ids:
             if id >= 0 and not self.infer_state[id] and self.load_state[id]:
                 self.c2wQueues[id].put(pickle.dumps(['inference']))
                 self.tCursor += 1 
                 self.infer_state[id] = True 
     
-    def get_module_flops(self, model_id, start, stop):
-        if stop <= start:
-            return 0
-        return sum(self.models[model_id].flops[start:stop])
+    def get_model_flops(self, model_id):
+        return sum(self.models[model_id].flops)
     
-    def get_module_loading_time(self, model_id, start, stop):
-        if stop <= start:
-            return 0
-        return sum(self.models[model_id].mlt[start:stop])  
+    def get_model_loading_time(self, model_id):
+        return sum(self.models[model_id].mlt)  
                        
     # To check prediction model , TODO in future
-    def get_predicted_latency(self, stop1, stop2):
-        flops1 = self.get_module_flops(self.candidate[0].id, self.candidate[0].cur_mod, stop1)
-        if stop2 > 0:
-            flops2 = self.get_module_flops(self.candidate[1].id, self.candidate[1].cur_mod, stop2)
-        else:
-            return self.regressor.predict(
-                np.array([self.candidate[0].bs, 0, flops1, 0]).reshape(1,4))
-            
+    def get_predicted_latency(self, second_id):
+        if second_id < 0:
+            id = self.candidate[0].id
+            bs = self.candidate[0].bs
+            return self.config[id][bs][1]['infer_time']
+        
+        flops1 = self.get_model_flops(self.candidate[0].id)
+        flops2 = self.get_model_flops(self.candidate[1].id)
+        
         return self.regressor.predict(
             np.array([self.candidate[0].bs, self.candidate[1].bs, flops1, flops2]).reshape(1,4))
         
@@ -147,89 +137,54 @@ class Controller:
         self.candidate[u] = self.candidate[v]
         self.candidate[v] = temp
             
-    def determine_parallel_ops(self):
+    def determine_parallel_model(self):
         if len(self.candidate) <= 1:
-            return -1, -1, False
+            return -1, False
         
-        start1 = self.candidate[0].cur_mod
-        stop1 = self.candidate[0].module_num 
-        
-        if self.get_module_loading_time(self.candidate[0].id, start1, stop1) >= self.load_time_limit:
-            print(f'*** current model {self.candidate[0].id} loading too long and no parallel modules ***')
-            return -1, -1, False
+        if self.get_model_loading_time(self.candidate[0].id) >= self.load_time_limit:
+            print(f'*** current model {self.candidate[0].id} loading too long and no parallel model ***')
+            return -1, False
         
         for i in range(1, len(self.candidate)):
             if self.candidate[i].ddl <= self.candidate[0].lat:
                 print("\033[1;31m [WARN] urgent task need to be executed immediately \033[0m")
                 if i != 1:
                     self.swap_candidate(i, 1)
-                self.candidate[1].cur_mod = self.candidate[1].module_num
-                return self.candidate[1].id, self.candidate[1].module_num, True
+                return self.candidate[1].id, True
         
-        start2 = self.candidate[1].cur_mod
-        stop2 = self.candidate[1].module_num
-        flops1 = self.get_module_flops(self.candidate[0].id, start1, stop1)
-        
-        # binary search to find maximal op range
-        rs = start2
-        rt = stop2
-        index = stop2
-        
-        while rt > rs:
-            flops2 = self.get_module_flops(self.candidate[1].id, start2, index)
+        flops1 = self.get_model_flops(self.candidate[0].id)
+        for i in range(1, len(self.candidate)):
+            flops2 = self.get_model_flops(self.candidate[i].id)
             pred_lat = self.regressor.predict(
-                np.array([self.candidate[0].bs, self.candidate[1].bs, flops1, flops2]).reshape(1,4))
+                np.array([self.candidate[0].bs, self.candidate[i].bs, flops1, flops2]).reshape(1,4))
+            
             if pred_lat <= self.candidate[0].ddl:
-                rs = index + 1
-            else:
-                rt = index - 1
-        
-            index = int((rs + rt) / 2)
-        
-        selected = index
-        ltime1 = self.get_module_loading_time(self.candidate[0].id, start1, stop1)            
-        while start2 < selected:
-            ltime2 = self.get_module_loading_time(self.candidate[1].id, start2, selected)
-            if ltime1 + ltime2 <= self.load_time_limit:
-                break
-            selected -= 1
-        
-        if selected == start2:
-            return -1, -1, False
-        
-        self.candidate[1].cur_mod = selected
-        flag = selected == stop2   # indicate whether both models will have finished tasks
-        
-        return self.candidate[1].id, selected, flag
+                if i != 1:
+                    self.swap_candidate(i, 1)
+                return self.candidate[i].id, True
+            
+        return -1, False
     
     def update_candidates_state(self):
         if len(self.candidate) == 0:
             return False 
         
         self.candidate.pop(0)
-        if self.both_full:
+        if self.both:
             self.candidate.pop(0)
-            
-        if len(self.candidate) > 0:
+        
+        if len(self.candidate) > 0:    
             for i in range(len(self.candidate)):
-                if i != 0 or self.both_full:
-                    self.candidate[i].srt -= self.load_time_limit
-        
+                self.candidate[i].srt -= self.load_time_limit
             self.candidate.sort(key=lambda obj: obj.srt)
+            
             return True
-        
         return False
-    
+        
     def compute_next_workers(self):
         notOver = self.update_candidates_state()
         self.next_act_id = self.candidate[0].id if notOver else -1
-        if self.next_act_id >= 0:
-            self.candidate[0].cur_mod = self.candidate[0].module_num
-            self.next_aux_id, self.aux_stop_mod, self.both_full = self.determine_parallel_ops()
-        else:
-            self.next_aux_id = -1
-            self.aux_stop_mod = -1
-            self.both_full = False
+        self.next_aux_id, self.both = self.determine_parallel_model() if self.next_act_id >= 0 else (-1, False)
             
     # Shortest Remaining Time scheduling strategy
     def update_cmd_queue(self):    
@@ -238,11 +193,10 @@ class Controller:
             if id >= 0:
                 command = None if self.w2cQueues[id].empty() else self.w2cQueues[id].get()
                 if command is not None:
-                    if command.endswith('task_over'):
+                    if command == 'task_over':
                         self.last_completed.append(id)
                         self.tCursor -= 1
-                        if command == 'task_over':
-                            self.task_num -= 1
+                        self.task_num -= 1
                     elif command == 'load_over':
                         self.load_state[id] = True
                         self.lCursor -= 1
@@ -254,27 +208,23 @@ class Controller:
         if self.lCursor <= 0 and self.tCursor <= 0:
             for w_id in self.last_completed:
                 self.infer_state[w_id] = False
+                self.load_state[w_id] = False
             self.last_completed.clear()
             
             self.notify_to_infer([self.next_act_id, self.next_aux_id])
             self.act_id = self.next_act_id
             self.aux_id = self.next_aux_id
             if len(self.candidate) > 0:
-                self.load_time_limit = self.get_predicted_latency(self.candidate[0].module_num, self.aux_stop_mod)
+                self.load_time_limit = self.get_predicted_latency(self.aux_id)
             self.compute_next_workers()
             self.notify_to_load([self.next_act_id, self.next_aux_id]) 
         
         if self.task_num <= 0: 
             self.load_time_limit = 10000000
-            self.reset()
             self.round += 1
             print(f'\033[1;34m [ROUND] : {self.round}\033[0m')
             self.compute_candidates()
-    
-    def reset(self):   
-        for i in range(self.detector_num):
-            self.load_state[i] = False
-            self.if_full[i] = False    
+      
             
     def run(self):
         self.initialization()
