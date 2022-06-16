@@ -135,7 +135,6 @@ def main(opt):
 
 
 if __name__ == "__main__":
-    random.seed(0)
     models = []
     # yolov5x = DetectMultiBackend('yolov5x.pt', device=torch.device('cpu'))
     # yolov5s = DetectMultiBackend('yolov5s.pt', device=torch.device('cpu'))

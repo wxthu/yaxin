@@ -83,7 +83,9 @@ class Controller:
                 self.candidate.append(self.models[i])
         
         self.candidate.sort(key=lambda obj: obj.srt)
-        assert len(self.candidate) > 0, 'no image input, please re-generate mocked data'
+        if len(self.candidate) == 0:
+            return
+        # assert len(self.candidate) > 0, 'no image input, please re-generate mocked data'
         self.task_num = len(self.candidate)
 
         self.next_act_id = self.candidate[0].id
