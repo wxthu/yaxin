@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import random
 
+random.seed(0)
 
 def load_mock_data(filename='mock_batched_request_rate.csv', freq_low=2, freq_high=5):
     def get_random_latency(n):

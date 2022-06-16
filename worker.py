@@ -99,6 +99,7 @@ class Worker:
             if command[0] == 'inference':
                 pred = self.engine.run(self.id, self.imgs)    
                 self.w2cQueue.put('task_over')
+                self.engine.release_model()
                 self.imgs = []
                         
             if command == 'exit':
