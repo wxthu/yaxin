@@ -64,7 +64,9 @@ class Controller:
                 self.candidate.append([i, batch, srt])
         
         self.candidate.sort(key=lambda obj: obj[2])
-        assert len(self.candidate) > 0, 'no image input, please re-generate mocked data'
+        if len(self.candidate) == 0:
+            return
+        # assert len(self.candidate) > 0, 'no image input, please re-generate mocked data'
         
         self.act_id = self.candidate[0][0]
         self.task_num = len(self.candidate)
