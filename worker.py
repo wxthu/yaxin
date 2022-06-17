@@ -58,7 +58,6 @@ class Worker:
         self.time_stamp = time_stamp
         self.imgs = 0
         self.has_started = False 
-        self.loaded = False     # To indicate whether model has loaded into GPU
     
     def run(self):
         
@@ -70,14 +69,12 @@ class Worker:
                 
             if command == 'to_load':
                 self.engine.load_model()
-                self.loaded = True
+                torch.cuda.synchronize()
                     
             if command == 'to_infer':
-                assert self.loaded == True
                 assert not self.imgQueue.empty()
                 
-                while self.c2wQueue.empty():
-                    pass
+                # auto-blocking
                 batch_cmd = self.c2wQueue.get()
                 frames = []
                 for _ in range(int(batch_cmd)):
@@ -91,7 +88,6 @@ class Worker:
                 # send signal to controller
                 self.w2cQueue.put('batch_done')
                 self.engine.release_model()
-                self.loaded = False
                         
             if command == 'exit':
                 print(f'worker {self.id} processed image number : {self.imgs} and to exit ...')
