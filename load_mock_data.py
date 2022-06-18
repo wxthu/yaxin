@@ -2,9 +2,8 @@ import numpy as np
 import pandas as pd
 import random
 
-random.seed(0)
-
 def load_mock_data(filename='mock_batched_request_rate.csv', freq_low=2, freq_high=5):
+    random.seed(0)
     def get_random_latency(n):
         latency_list = [1000/i for i in range(freq_low, freq_high+1)]
         return [int(random.choice(latency_list)) for _ in range(n)]
