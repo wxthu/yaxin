@@ -16,6 +16,16 @@ class Detect:
         self.match_pair = dict()
         self.modules = modules
         self.model._apply(self.pin_memory)  
+        
+        self.warm_up()
+        
+    def warm_up(self):
+        self.model.cuda()
+        fake_img = torch.zeros(1, 3, 224, 224).cuda()
+        for _ in range(5):
+            self.model(fake_img)
+        self.model.cpu()
+        print(f'@@@@@@ worker {self.id} finished warm up @@@@@')
             
     def pin_memory(self, tensor):
         return tensor.pin_memory()
