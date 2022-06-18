@@ -5,6 +5,7 @@ from analysis import Analyser
 import torch
 import joblib
 import numpy as np
+import time 
 
 class Controller:
     """
@@ -39,6 +40,9 @@ class Controller:
         self.config = configs  # list, each element is dictionary
         self.models = models
         self.load_time_limit = 10000000
+        self.qos_violation_count = 0
+        self.avg_violation_ratio = []
+        self.completion_time = None  # recording the completion time for each worker
         self.both_full = False # denote whether parallel op groups have reached the end of models
         self.regressor = joblib.load('./train/lat_pred.pkl')
         
@@ -73,7 +77,7 @@ class Controller:
         cmd = self.cmds[self.round]
         ddls = self.deadlines[self.round]
         self.candidate.clear()
-        
+        self.completion_time = [0.0 for _ in range(self.detector_num)]
         for i, (batch, ddl) in enumerate(zip(cmd, ddls)):
             if batch:
                 self.models[i].bs = batch
@@ -81,6 +85,7 @@ class Controller:
                 self.models[i].lat = self.config[i][batch][1]['infer_time']
                 self.models[i].srt = sum(ddl) - self.models[i].lat
                 self.candidate.append(self.models[i])
+                self.completion_time[i] = time.time()
         
         self.candidate.sort(key=lambda obj: obj.srt)
         if len(self.candidate) == 0:
@@ -242,7 +247,15 @@ class Controller:
             self.next_aux_id = -1
             self.aux_stop_mod = -1
             self.both_full = False
-            
+    
+    def compute_qos_violation(self):
+        for i, real in enumerate(self.completion_time):
+            if real > self.models[i].ddl:
+                batch = self.models[i].bs
+                self.qos_violation_count += batch
+                vio_ratio = [(real - self.models[i].ddl) / self.models[i].ddl * 100 for _ in range(batch)]     
+                self.avg_violation_ratio.extend(vio_ratio)
+                
     # Shortest Remaining Time scheduling strategy
     def update_cmd_queue(self):    
         
@@ -255,6 +268,7 @@ class Controller:
                         self.tCursor -= 1
                         if command == 'task_over':
                             self.task_num -= 1
+                            self.completion_time[id] = 1000 * (time.time() - self.completion_time[id])
                     elif command == 'load_over':
                         self.load_state[id] = True
                         self.lCursor -= 1
@@ -278,6 +292,7 @@ class Controller:
         
         if self.task_num <= 0: 
             self.load_time_limit = 10000000
+            self.compute_qos_violation()
             self.reset()
             self.round += 1
             print(f'\033[1;34m [ROUND] : {self.round}\033[0m')
@@ -298,5 +313,7 @@ class Controller:
         for i in range(self.detector_num):
             self.c2wQueues[i].put(pickle.dumps('exit'))
         
-        print(f"all workers has finished jobs, processing {self.total_requests} images in total!")
+        print(f"All workers has finished jobs, processing {self.total_requests} images in total!")
+        print(f'Total number of overtime task is : {self.qos_violation_count}')
+        print(f'Average QoS violation ratio is : {sum(self.avg_violation_ratio)/self.qos_violation_count}')
         return

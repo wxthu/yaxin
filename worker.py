@@ -22,7 +22,17 @@ class Detect:
         self.start_lmod = 0
         self.stop_lmod = 0      # loading cursor
         self.model._apply(self.pin_memory)
-                    
+        
+        self.warm_up()
+    
+    def warm_up(self):
+        self.model.cuda()
+        fake_img = torch.zeros(1, 3, 224, 224).cuda()
+        for _ in range(5):
+            self.model(fake_img)
+        self.model.cpu()
+        print(f'@@@@@@ worker {self.id} finished warm up @@@@@')   
+                
     def pre_hook(self):
         def forward_pre_hook(module, data_input):
             if len(list(module.children())) == 0 and len(list(module.parameters())) > 0:
