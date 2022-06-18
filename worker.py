@@ -6,12 +6,23 @@ import os
 from utils.torch_utils import time_sync
 
 class Detect:
-    def __init__(self, model):
+    def __init__(self, model, id):
         self.model = model[1].eval()
         self.name = model[0]
+        self.id = id
         self.device = 'cpu'
-        self.match_pair=dict()
+        self.match_pair = dict()
         self.model._apply(self.pin_memory)
+        
+        self.warm_up()
+    
+    def warm_up(self):
+        self.model.cuda()
+        fake_img = torch.zeros(1, 3, 224, 224).cuda()
+        for _ in range(5):
+            self.model(fake_img)
+        self.model.cpu()
+        print(f'@@@@@@ worker {self.id} finished warm up @@@@@')
             
     def pre_hook(self, strm):
         def forward_pre_hook(module, data_input):
@@ -72,7 +83,7 @@ class Worker:
     def __init__(self, id, batchsize, c2wQueue, w2cQueue, imgQueue, time_stamp, model):
         self.id = id
         self.batchsize = batchsize
-        self.engine = Detect(model)
+        self.engine = Detect(model, id)
         self.name = model[0]
         self.c2wQueue = c2wQueue
         self.w2cQueue = w2cQueue

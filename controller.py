@@ -27,6 +27,9 @@ class Controller:
         self.task_num = 0 # record the number of tasks at the moment
         self.total_requests = 0
         self.config = config  # list, each element is dictionary
+        self.qos_violation_count = 0
+        self.avg_violation_ratio = []
+        self.completion_time = [] # recording the completion time for each worker
         
     def initialization(self):
         for q in range(len(self.imgQueues)):
@@ -61,7 +64,8 @@ class Controller:
         for i, (batch, ddl) in enumerate(zip(cmd, ddls)):
             if batch:
                 srt = sum(ddl) - self.config[i][batch][1]['infer_time']
-                self.candidate.append([i, batch, srt])
+                # The fourth element denote Job Completion Time for statistics purpose
+                self.candidate.append([i, batch, srt, time.time(), sum(ddl)])
         
         self.candidate.sort(key=lambda obj: obj[2])
         if len(self.candidate) == 0:
@@ -80,35 +84,45 @@ class Controller:
         self.load_state[self.act_id] = True
         self.round += 1
         print(f'\033[1;34m [ROUND] : {self.round}\033[0m')
-        
+    
+    def compute_qos_violation(self):
+        for c in self.candidate:
+            if c[3] > c[4]:
+                batch = c[1]    
+                self.qos_violation_count += batch
+                vio_ratio = [(c[3] - c[4])/c[4] * 100 for _ in range(batch)]
+                self.avg_violation_ratio.extend(vio_ratio)
+                
     # Shortest Remaining Time scheduling strategy
     def update_cmd_queue(self):
         
         if self.task_num == 0:
             self.cursor = 0
+            self.compute_qos_violation()
             self.compute_candidates()
             
-        command = None if self.w2cQueues[self.act_id].empty() else self.w2cQueues[self.act_id].get()
-        if command is not None:
-            if command == 'task_over':
-                self.load_state[self.act_id] = False
-                self.task_num -= 1
-                if self.next_id is not None:
-                    self.c2wQueues[self.next_id].put('inference')
-                    self.act_id = self.next_id
-                    self.cursor += 1
-                    self.next_id = self.candidate[self.cursor][0] if self.cursor < len(self.candidate) else None
+        command = self.w2cQueues[self.act_id].get()
+        if command == 'task_over':
+            self.load_state[self.act_id] = False
+            self.task_num -= 1
+            self.candidate[self.cursor-1][3] = 1000 * (time.time() - self.candidate[self.cursor-1][3])
+            if self.next_id is not None:
+                self.c2wQueues[self.next_id].put('inference')
+                self.act_id = self.next_id
+                self.cursor += 1
+                self.next_id = self.candidate[self.cursor][0] if self.cursor < len(self.candidate) else None
+        
+        elif command == 'load_over':
+            # Pipeline: loading next model while current inference
+            if self.next_id is not None:
+                if self.load_state[self.next_id] is False:
+                    self.c2wQueues[self.next_id].put('loading')
+                    self.c2wQueues[self.next_id].put(self.candidate[self.cursor][1])
+                    self.load_state[self.next_id] = True    
+        else:
+            print(f'=== Unknown command: {command} ===')
+            assert False
             
-            elif command == 'load_over':
-                # Pipeline: loading next model while current inference
-                if self.next_id is not None:
-                    if self.load_state[self.next_id] is False:
-                        self.c2wQueues[self.next_id].put('loading')
-                        self.c2wQueues[self.next_id].put(self.candidate[self.cursor][1])
-                        self.load_state[self.next_id] = True    
-            else:
-                print(f'=== Unknown command: {command} ===')
-                assert False
         return
 
     def run(self):
@@ -121,5 +135,7 @@ class Controller:
         for i in range(self.detector_num):
             self.c2wQueues[i].put('exit')
         
-        print(f"all workers has finished jobs, processing {self.total_requests} images in total!")
+        print(f"All workers has finished jobs, processing {self.total_requests} images in total!")
+        print(f'Total number of overtime task is : {self.qos_violation_count}')
+        print(f'Average QoS violation ratio is : {sum(self.avg_violation_ratio)/self.qos_violation_count}')
         return
