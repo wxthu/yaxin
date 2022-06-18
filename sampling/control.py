@@ -69,12 +69,10 @@ class Controller:
         datawriter = csv.writer(csvfile, dialect='excel')
         datawriter.writerow(['inference', 'model_1', 'op_range', 'batchsize', 'model_2', 'op_range', 'batchsize'])
         while True:
-
-            while self.w2cQueues[0].empty() or self.w2cQueues[1].empty():
-                pass
-            # print(' ** Get profiling results successfully !')
+            # auto blocking mode
             cmd0 = pickle.loads(self.w2cQueues[0].get())
             cmd1 = pickle.loads(self.w2cQueues[1].get())
+            # print(' ** Get profiling results successfully !')
             
             if cmd0 == 'finish' and cmd1 == 'finish':
                 break

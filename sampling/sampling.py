@@ -30,8 +30,9 @@ def runController(models, c2wQueues, w2cQueues, sample_times):
     
 if __name__ == '__main__':
 
-    models = {'vgg11':vgg11(), 'vgg13':vgg13(), 'vgg16':vgg16(),
-            'alexnet':alexnet(), 'resnet101':resnet101(), 'resnet152':resnet152()}
+    models = {'vgg11':vgg11(), 'vgg13':vgg13(), 'vgg16':vgg16(), 'resnet18':resnet18(), 'resnet34':resnet34(),
+            'sqnt11':squeezenet1_1(), 'sqnt10':squeezenet1_0(),'alexnet':alexnet(), 'resnet101':resnet101(), 
+            'resnet50':resnet50(), 'resnet152':resnet152()}
               
     barrier = Barrier(2)
     c2wQueues = [Queue(1000) for _ in range(2)]
