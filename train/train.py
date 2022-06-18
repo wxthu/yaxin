@@ -32,27 +32,12 @@ error = abs(y_pred - y_test) / y_test * 100
 
 error_distribution = [0 for _ in range(10)]
 for x in error:
-    if x <= 10:
-        error_distribution[0] += 1
-    elif 10 < x <= 20:
-        error_distribution[1] += 1
-    elif 20 < x <= 30:
-        error_distribution[2] += 1
-    elif 30 < x <= 40:
-        error_distribution[3] += 1
-    elif 40 < x <= 50:
-        error_distribution[4] += 1
-    elif 50 < x <= 60:
-        error_distribution[5] += 1
-    elif 60 < x <= 70:
-        error_distribution[6] += 1
-    elif 70 < x <= 80:
-        error_distribution[7] += 1
-    elif 80 < x <= 90:
-        error_distribution[8] += 1
-    else:
+    index= int(x/10)
+    if index <= 9:
+        error_distribution[int(x/10)] += 1
+    else: 
         error_distribution[9] += 1
-
+        
 s = sum(error_distribution)
 percentage = []
 for x in error_distribution:
