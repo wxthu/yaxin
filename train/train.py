@@ -3,14 +3,13 @@ import joblib
 import csv
 import numpy as np
 
-train_num = 70000
+train_num = 104000
 feature = []
 with open('sampled_data_processed.csv', 'r') as csvfile:
     reader = csv.reader(csvfile)
     
     headline = next(reader)
     for line in reader:
-#         latency.append(float(line[0]))
         feature.append([int(line[3]), int(line[6]), float(line[7]), float(line[8]), float(line[0])])
 
 feature = np.array(feature)
