@@ -9,8 +9,6 @@ import argparse
 import multiprocessing
 from multiprocessing import Process, Queue, Manager
 
-import random
-
 from torchvision.models.resnet import resnet18, resnet34, resnet50, resnet101, resnet152
 from torchvision.models import alexnet, vgg16, vgg13, vgg11, squeezenet1_0, squeezenet1_1
 from utils.general import check_requirements, print_args
@@ -18,15 +16,13 @@ from utils.general import check_requirements, print_args
 from controller import Controller     
 from worker import Worker
 
-def runWorker(i,
-            batchsize, 
+def runWorker(i, 
             c2wQueue,
             w2cQueue,
             imgQueue, 
             time_stamp,
             model):
-    worker = Worker(i,
-                    batchsize, 
+    worker = Worker(i, 
                     c2wQueue=c2wQueue,
                     w2cQueue=w2cQueue,
                     imgQueue=imgQueue, 
@@ -101,7 +97,6 @@ def main(opt):
     detectors = [
                 Process(target=runWorker, 
                         args=(i,
-                                batchsize,
                                 c2wQueues[i],
                                 w2cQueues[i],
                                 imgQueues[i], 
@@ -115,7 +110,6 @@ def main(opt):
                 ]
 
     controller.start()
-    
     for detector in detectors:
         detector.start()
 

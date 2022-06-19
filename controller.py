@@ -1,6 +1,7 @@
 
 from decision import Decision
 from load_mock_data import load_mock_data
+import time 
 
 class Controller:
     """
@@ -14,6 +15,7 @@ class Controller:
         self.weights = []
         self.prices = []
         self.batches = []
+        self.bs = None
         self.deadlines = []
         self.memory = mem  # memory contraint
         self.detector_num = detector_num
@@ -30,6 +32,10 @@ class Controller:
         self.total_requests = 0
         self.config = config  # list, each element is dictionary
         self.strat = strategy
+        self.ddls = None # single round deadlines for each worker
+        self.qos_violation_count = 0
+        self.avg_violation_ratio = []
+        self.completion_time = None # recording the completion time for each worker
         
     def initialization(self):
         for q in range(len(self.imgQueues)):
@@ -65,14 +71,26 @@ class Controller:
         
         return self.memory - total
     
+    def compute_qos_violation(self):
+        if self.completion_time is not None:
+            for real, expected, bsize in zip(self.completion_time, self.ddls, self.bs):
+                if real > expected:
+                    self.qos_violation_count += bsize
+                    vio_ratio = [(real - expected) / expected * 100 for _ in range(bsize)]
+                    self.avg_violation_ratio.extend(vio_ratio)
+            
     def update_cmd_queue(self):
         if self.task_num == 0:
             print(f'\033[1;34m [ROUND] : {self.cursor}\033[0m')
+            self.compute_qos_violation()
             cmd = self.cmds[self.cursor]
             ddls = self.deadlines[self.cursor]
             self.batches.clear()
+            self.ddls = [0.0 for _ in range(self.detector_num)]
             self.candidate.clear()
-
+            self.completion_time = [0.0 for _ in range(self.detector_num)]
+            self.bs = [0 for _ in range(self.detector_num)]
+            
             # add 0 in the front of the list for dynamic programming
             wts = [0] 
             prc = [0]
@@ -80,11 +98,17 @@ class Controller:
                 if batch:
                     self.candidate.append(i)
                     self.batches.append(batch)
+                    self.bs.append(batch)
                     self.weights.append(self.config[i][batch][0])
+                    self.ddls[i] = sum(ddl)
+                    # srt = (sum(ddl) - self.config[i][batch][1]['infer_time']) / batch
+                    # self.prices.append(100/srt)   # price must be positive
                     srt = (sum(ddl) - self.config[i][batch][1]['infer_time']) / batch
-                    self.prices.append(100/srt)   # price must be positive
+                    self.prices.append(self.config[i][batch][1]['infer_time'])
+                    self.completion_time[i] = time.time()
                     wts.append(self.config[i][batch][0])
-                    prc.append(100/srt)
+                    # prc.append(100/srt)
+                    prc.append(self.config[i][batch][1]['infer_time'])
                 else:
                     # when detector i is not selected , we still add one element in the list 
                     # to ensure the consistency of indexing
@@ -114,8 +138,9 @@ class Controller:
                 cmd = self.w2cQueues[j].get()
                 if cmd == 'batch_done':
                     self.task_num -= 1
+                    self.completion_time[j] = 1000 * (time.time() - self.completion_time[j])
 
-                popLists.append(j)
+                    popLists.append(j)
 
         self.popWorkers(popLists)
         popLists.clear()
@@ -156,5 +181,8 @@ class Controller:
         for i in range(self.detector_num):
             self.c2wQueues[i].put('exit')
         
-        print(f"all workers has finished jobs, processing {self.total_requests} images in total!")
+        print(f"All workers has finished jobs, processing {self.total_requests} images in total!")
+        print(f'Total number of overtime task is : {self.qos_violation_count}')
+        if self.qos_violation_count > 0:
+            print(f'Average QoS violation ratio is : {sum(self.avg_violation_ratio)/self.qos_violation_count}')
         return
