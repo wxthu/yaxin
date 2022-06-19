@@ -135,34 +135,34 @@ if __name__ == "__main__":
     #                                           2:[120, {'infer_time':8.58, 'total_time':14.62, 'gpu_util':65}],
     #                                           3:[186, {'infer_time':13.05, 'total_time':19.09, 'gpu_util':74}],
     #                                           4:[238, {'infer_time':17.01, 'total_time':23.05, 'gpu_util':78}]}])
-    # models.append(['sqt11', squeezenet1_1(), {1:[46, {'infer_time':3.52, 'total_time':9.62, 'gpu_util':40}],
-    #                                           2:[70, {'infer_time':4.45, 'total_time':10.55, 'gpu_util':51}],
-    #                                           3:[106, {'infer_time':6.84, 'total_time':12.94, 'gpu_util':60}],
-    #                                           4:[130, {'infer_time':9.03, 'total_time':15.13, 'gpu_util':67}]}])
-    # models.append(['rnt18', resnet18(), {1:[124, {'infer_time':4.39, 'total_time':24.2, 'gpu_util':54}],
-    #                                      2:[126, {'infer_time':8.29, 'total_time':28.1, 'gpu_util':60}],
-    #                                      3:[154, {'infer_time':11.99, 'total_time':31.8, 'gpu_util':67}],
-    #                                      4:[196, {'infer_time':15.3, 'total_time':35.11, 'gpu_util':69}]}])
-    # models.append(['rnt34', resnet34(), {1:[166, {'infer_time':7.54, 'total_time':43.22, 'gpu_util':54}],
-    #                                      2:[168, {'infer_time':14.48, 'total_time':50.16, 'gpu_util':61}],
-    #                                      3:[198, {'infer_time':21.12, 'total_time':56.8, 'gpu_util':67}],
-    #                                      4:[238, {'infer_time':27.37, 'total_time':63.05, 'gpu_util':71}]}])
-    # models.append(['rnt50', resnet50(), {1:[192, {'infer_time':13.44, 'total_time':59.84, 'gpu_util':56}],
-    #                                      2:[238, {'infer_time':24.62, 'total_time':71.02, 'gpu_util':61}],
-    #                                      3:[274, {'infer_time':37.04, 'total_time':83.44, 'gpu_util':71}],
-    #                                      4:[192, {'infer_time':48.22, 'total_time':94.62, 'gpu_util':71}]}])
+    models.append(['sqt11', squeezenet1_1(), {1:[46, {'infer_time':3.52, 'total_time':9.62, 'gpu_util':40}],
+                                              2:[70, {'infer_time':4.45, 'total_time':10.55, 'gpu_util':51}],
+                                              3:[106, {'infer_time':6.84, 'total_time':12.94, 'gpu_util':60}],
+                                              4:[130, {'infer_time':9.03, 'total_time':15.13, 'gpu_util':67}]}])
+    models.append(['rnt18', resnet18(), {1:[124, {'infer_time':4.39, 'total_time':24.2, 'gpu_util':54}],
+                                         2:[126, {'infer_time':8.29, 'total_time':28.1, 'gpu_util':60}],
+                                         3:[154, {'infer_time':11.99, 'total_time':31.8, 'gpu_util':67}],
+                                         4:[196, {'infer_time':15.3, 'total_time':35.11, 'gpu_util':69}]}])
+    models.append(['rnt34', resnet34(), {1:[166, {'infer_time':7.54, 'total_time':43.22, 'gpu_util':54}],
+                                         2:[168, {'infer_time':14.48, 'total_time':50.16, 'gpu_util':61}],
+                                         3:[198, {'infer_time':21.12, 'total_time':56.8, 'gpu_util':67}],
+                                         4:[238, {'infer_time':27.37, 'total_time':63.05, 'gpu_util':71}]}])
+    models.append(['rnt50', resnet50(), {1:[192, {'infer_time':13.44, 'total_time':59.84, 'gpu_util':56}],
+                                         2:[238, {'infer_time':24.62, 'total_time':71.02, 'gpu_util':61}],
+                                         3:[274, {'infer_time':37.04, 'total_time':83.44, 'gpu_util':71}],
+                                         4:[192, {'infer_time':48.22, 'total_time':94.62, 'gpu_util':71}]}])
     models.append(['rnt101', resnet101(), {1:[266, {'infer_time':22.75, 'total_time':132.62, 'gpu_util':50}],
                                            2:[312, {'infer_time':40.81, 'total_time':150.68, 'gpu_util':61}],
                                            3:[376, {'infer_time':63.33, 'total_time':173.2, 'gpu_util':68}],
                                            4:[432, {'infer_time':83.93, 'total_time':193.8, 'gpu_util':72}]}])
-    models.append(['rnt152', resnet152(), {1:[334, {'infer_time':32.86, 'total_time':179.28, 'gpu_util':55}],
-                                           2:[354, {'infer_time':59.28, 'total_time':205.7, 'gpu_util':59}],
-                                           3:[400, {'infer_time':94.24, 'total_time':240.66, 'gpu_util':64}],
-                                           4:[494, {'infer_time':124.54, 'total_time':270.96, 'gpu_util':75}]}])
-    models.append(['alexnet', alexnet(), {1:[264, {'infer_time':4.24, 'total_time':136.29, 'gpu_util':39}],
-                                          2:[264, {'infer_time':4.71, 'total_time':136.76, 'gpu_util':39}],
-                                          3:[276, {'infer_time':6.11, 'total_time':138.16, 'gpu_util':42}],
-                                          4:[292, {'infer_time':6.85, 'total_time':138.9, 'gpu_util':42}]}])
+    # models.append(['rnt152', resnet152(), {1:[334, {'infer_time':32.86, 'total_time':179.28, 'gpu_util':55}],
+    #                                        2:[354, {'infer_time':59.28, 'total_time':205.7, 'gpu_util':59}],
+    #                                        3:[400, {'infer_time':94.24, 'total_time':240.66, 'gpu_util':64}],
+    #                                        4:[494, {'infer_time':124.54, 'total_time':270.96, 'gpu_util':75}]}])
+    # models.append(['alexnet', alexnet(), {1:[264, {'infer_time':4.24, 'total_time':136.29, 'gpu_util':39}],
+    #                                       2:[264, {'infer_time':4.71, 'total_time':136.76, 'gpu_util':39}],
+    #                                       3:[276, {'infer_time':6.11, 'total_time':138.16, 'gpu_util':42}],
+    #                                       4:[292, {'infer_time':6.85, 'total_time':138.9, 'gpu_util':42}]}])
     models.append(['vgg11', vgg11(), {1:[618, {'infer_time':13.39, 'total_time':304.11, 'gpu_util':43}],
                                       2:[742, {'infer_time':24.3, 'total_time':315.02, 'gpu_util':45}],
                                       3:[848, {'infer_time':35.53, 'total_time':326.25, 'gpu_util':50}],
@@ -171,10 +171,10 @@ if __name__ == "__main__":
                                       2:[774, {'infer_time':35.35, 'total_time':323.65, 'gpu_util':50}],
                                       3:[894, {'infer_time':53.64, 'total_time':341.94, 'gpu_util':58}],
                                       4:[1006, {'infer_time':73.81, 'total_time':362.11, 'gpu_util':66}]}])
-    models.append(['vgg16', vgg16(), {1:[674, {'infer_time':23.03, 'total_time':319.4, 'gpu_util':46}],
-                                      2:[794, {'infer_time':44.92, 'total_time':341.29, 'gpu_util':55}],
-                                      3:[914, {'infer_time':71.11, 'total_time':367.48, 'gpu_util':66}],
-                                      4:[1026, {'infer_time':99.23, 'total_time':395.6, 'gpu_util':78}]}])
+    # models.append(['vgg16', vgg16(), {1:[674, {'infer_time':23.03, 'total_time':319.4, 'gpu_util':46}],
+    #                                   2:[794, {'infer_time':44.92, 'total_time':341.29, 'gpu_util':55}],
+    #                                   3:[914, {'infer_time':71.11, 'total_time':367.48, 'gpu_util':66}],
+    #                                   4:[1026, {'infer_time':99.23, 'total_time':395.6, 'gpu_util':78}]}])
     # models.append(['yolov5x', yolov5x, {1:[422, {'infer_time':31.91, 'total_time':140.8, 'gpu_util':70}],
     #                                     2:[458, {'infer_time':58.69, 'total_time':167.58, 'gpu_util':78}],
     #                                     3:[506, {'infer_time':90.23, 'total_time':199.12, 'gpu_util':78}],
