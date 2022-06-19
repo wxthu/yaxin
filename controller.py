@@ -101,6 +101,7 @@ class Controller:
                     self.bs.append(batch)
                     self.weights.append(self.config[i][batch][0])
                     self.ddls[i] = sum(ddl)
+                    self.bs[i] = batch
                     # srt = (sum(ddl) - self.config[i][batch][1]['infer_time']) / batch
                     # self.prices.append(100/srt)   # price must be positive
                     srt = (sum(ddl) - self.config[i][batch][1]['infer_time']) / batch
