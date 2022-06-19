@@ -42,7 +42,9 @@ class Controller:
         self.qos_violation_count = 0
         self.avg_violation_ratio = []
         self.completion_time = None # recording the completion time for each worker
-        self.regressor = joblib.load('./train/lat_pred.pkl')
+        # self.regressor = joblib.load('./train/lat_pred.pkl')
+        self.regressor = joblib.load('./train/old_lat_pred.pkl')
+
         
         print('##### Controller init success #####')
         
