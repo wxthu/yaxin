@@ -44,8 +44,8 @@ class Controller:
         self.avg_violation_ratio = []
         self.completion_time = None  # recording the completion time for each worker
         self.both_full = False # denote whether parallel op groups have reached the end of models
-        # self.regressor = joblib.load('./train/lat_pred.pkl')
-        self.regressor = joblib.load('./train/old_lat_pred.pkl')
+        self.regressor = joblib.load('./train/lat_pred.pkl')
+        # self.regressor = joblib.load('./train/old_lat_pred.pkl')
         
         print('##### Controller init success #####')
         
