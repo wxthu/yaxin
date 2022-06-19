@@ -41,10 +41,9 @@ class Controller:
         self.load_time_limit = 10000000
         self.qos_violation_count = 0
         self.avg_violation_ratio = []
-        self.completion_time = None # recording the completion time for each worker
-        # self.regressor = joblib.load('./train/lat_pred.pkl')
-        self.regressor = joblib.load('./train/old_lat_pred.pkl')
-
+        self.completion_time = None  # recording the completion time for each worker
+        self.regressor = joblib.load('./train/lat_pred.pkl')
+        # self.regressor = joblib.load('./train/old_lat_pred.pkl')
         
         print('##### Controller init success #####')
         
@@ -162,14 +161,11 @@ class Controller:
                 return self.candidate[1].id, True
         
         flops1 = self.get_model_flops(self.candidate[0].id)
-        # for i in range(1, len(self.candidate)):
         flops2 = self.get_model_flops(self.candidate[1].id)
         pred_lat = self.regressor.predict(
             np.array([self.candidate[0].bs, self.candidate[1].bs, flops1, flops2]).reshape(1,4))
         
         if pred_lat <= self.candidate[0].ddl:
-            # if i != 1:
-            #     self.swap_candidate(i, 1)
             return self.candidate[1].id, True
             
         return -1, False
