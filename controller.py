@@ -29,8 +29,7 @@ class Controller:
         self.config = config  # list, each element is dictionary
         self.qos_violation_count = 0
         self.avg_violation_ratio = []
-        self.completion_time = [] # recording the completion time for each worker
-        
+                
     def initialization(self):
         for q in range(len(self.imgQueues)):
             for i in range(self.img_num):

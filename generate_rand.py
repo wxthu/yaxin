@@ -2,7 +2,7 @@ import random
 import numpy as np
 import pandas as pd
 
-def gen_rand(img_num=200, detector_num=7):
+def gen_rand(img_num=250, detector_num=6):
 
     rates= {}
     batch_pool = [0, 1, 2, 3, 4]
