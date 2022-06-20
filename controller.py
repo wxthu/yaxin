@@ -1,20 +1,24 @@
 
 from load_mock_data import load_mock_data
+import pickle
 import time
 
 class Controller:
     """
     作为Controller, 监视所有的Worker
     """
-    def __init__(self, detector_num=3, img_num=800, config=None,
+    def __init__(self, detector_num=6, img_num=800, config=None,
                 c2wQueues=None, w2cQueues=None, imgQueues=None):
         """ 
         two-way communiaction to prevent message contention
         """
         self.detector_num = detector_num
         self.load_state = [False for _ in range(detector_num)]
-        self.act_id = None
-        self.next_id = None
+        self.infer_state = [False for _ in range(detector_num)]
+        self.lCursor = 0
+        self.tCursor = 0  # These two flags record current inference state and next loading state
+        self.act_id = -1
+        self.next_id = -1
         self.candidate = []
         self.img_num = img_num
         self.c2wQueues = c2wQueues
@@ -47,6 +51,18 @@ class Controller:
             
         self.compute_candidates()
     
+    def notify_to_load(self, w_id):
+        if w_id >= 0 and not self.load_state[w_id]:
+            command = ['loading', self.candidate[self.cursor][1]]
+            self.c2wQueues[self.next_id].put(pickle.dumps(command))
+            self.lCursor += 1
+            
+    def notify_to_infer(self, w_id):     
+        if w_id >= 0 and self.load_state[w_id] and not self.infer_state[w_id]:
+            self.c2wQueues[w_id].put(pickle.dumps(['inference']))
+            self.infer_state[w_id] = True
+            self.tCursor += 1
+             
     def compute_candidates(self):
         '''
         This function is mainly responsible for computing candidates
@@ -70,16 +86,11 @@ class Controller:
         if len(self.candidate) == 0:
             return
         
-        self.act_id = self.candidate[0][0]
+        self.act_id = -1
+        self.next_id = self.candidate[0][0]
         self.task_num = len(self.candidate)
         
-        self.c2wQueues[self.act_id].put('loading')
-        self.c2wQueues[self.act_id].put(self.candidate[0][1])
-        self.c2wQueues[self.act_id].put('inference')
-        self.load_state[self.act_id] = True
-        self.cursor += 1
-        self.next_id = self.candidate[self.cursor][0] if self.cursor < len(self.candidate) else None
-        self.load_state[self.act_id] = True
+        self.notify_to_load(self.next_id)
         self.round += 1
         print(f'\033[1;34m [ROUND] : {self.round}\033[0m')
     
@@ -94,32 +105,34 @@ class Controller:
     # Shortest Remaining Time scheduling strategy
     def update_cmd_queue(self):
         
+        for ind in [self.act_id, self.next_id]:
+            if ind >= 0 and not self.w2cQueues[ind].empty():    
+                command = self.w2cQueues[ind].get()
+                if command == 'task_over':
+                    self.load_state[ind] = False
+                    self.infer_state[ind] = False
+                    self.task_num -= 1
+                    self.tCursor -= 1
+                    self.candidate[self.cursor-1][3] = 1000 * (time.time() - self.candidate[self.cursor-1][3])
+                elif command == 'load_over':
+                    self.load_state[ind] = True
+                    self.lCursor -= 1
+                else:
+                    print(f'=== Unknown command: {command} ===')
+                    assert False
+        
         if self.task_num == 0:
             self.cursor = 0
             self.compute_qos_violation()
             self.compute_candidates()
             
-        command = self.w2cQueues[self.act_id].get()
-        if command == 'task_over':
-            self.load_state[self.act_id] = False
-            self.task_num -= 1
-            self.candidate[self.cursor-1][3] = 1000 * (time.time() - self.candidate[self.cursor-1][3])
-            if self.next_id is not None:
-                self.c2wQueues[self.next_id].put('inference')
-                self.act_id = self.next_id
-                self.cursor += 1
-                self.next_id = self.candidate[self.cursor][0] if self.cursor < len(self.candidate) else None
-        
-        elif command == 'load_over':
-            # Pipeline: loading next model while current inference
-            if self.next_id is not None:
-                if self.load_state[self.next_id] is False:
-                    self.c2wQueues[self.next_id].put('loading')
-                    self.c2wQueues[self.next_id].put(self.candidate[self.cursor][1])
-                    self.load_state[self.next_id] = True    
-        else:
-            print(f'=== Unknown command: {command} ===')
-            assert False
+        if self.lCursor <= 0 and self.tCursor <= 0:
+            self.notify_to_infer(self.next_id)
+            self.act_id = self.next_id
+            self.cursor += 1
+            if self.cursor < len(self.candidate):
+                self.next_id = self.candidate[self.cursor][0]
+                self.notify_to_load(self.next_id)
             
         return
 
@@ -131,7 +144,7 @@ class Controller:
                 break
 
         for i in range(self.detector_num):
-            self.c2wQueues[i].put('exit')
+            self.c2wQueues[i].put(pickle.dumps(['exit']))
         
         print(f"All workers has finished jobs, processing {self.total_requests} images in total!")
         print(f'Total number of overtime task is : {self.qos_violation_count}')

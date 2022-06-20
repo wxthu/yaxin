@@ -4,6 +4,7 @@ import time
 import numpy as np
 import os
 from utils.torch_utils import time_sync
+import pickle
 
 class Detect:
     def __init__(self, model, id):
@@ -91,43 +92,35 @@ class Worker:
         self.time_stamp = time_stamp
         self.img_count = 0
         self.imgs = []
-        self.strms = [torch.cuda.Stream() for _ in range(2)]
         
     def run(self):
         self.time_stamp.append(time.time())
         
         while True:
-            command = self.c2wQueue.get()
-            if command == 'loading':
-                with torch.cuda.stream(self.strms[0]):
-                    self.engine.load_model() 
-                    
-                    while self.c2wQueue.empty():
-                        pass
-                    
-                    bs = self.c2wQueue.get()
-                    for _ in range(int(bs)):
-                        if self.imgQueue.qsize() > 0:
-                            self.img_count = self.imgQueue.get()
-                            self.imgs.append(np.zeros(shape=(384, 640, 3)))
-                    assert len(self.imgs) > 0
-                    
-                    self.imgs = np.stack(self.imgs).transpose((0, 3, 1, 2))
-                    self.imgs = np.ascontiguousarray(self.imgs)
-                    self.imgs = torch.from_numpy(self.imgs).type(torch.FloatTensor).cuda()
+            command = pickle.loads(self.c2wQueue.get())
+            if command[0] == 'loading':
+                self.engine.load_model() 
+                bs = command[1]
+                for _ in range(int(bs)):
+                    if self.imgQueue.qsize() > 0:
+                        self.img_count = self.imgQueue.get()
+                        self.imgs.append(np.zeros(shape=(384, 640, 3)))
+                assert len(self.imgs) > 0
+                
+                self.imgs = np.stack(self.imgs).transpose((0, 3, 1, 2))
+                self.imgs = np.ascontiguousarray(self.imgs)
+                self.imgs = torch.from_numpy(self.imgs).type(torch.FloatTensor).cuda()
 
                 torch.cuda.synchronize()
                 self.w2cQueue.put('load_over')
                 
-            if command == 'inference':
-
+            if command[0] == 'inference':
                 pred = self.engine.run(self.id, self.imgs)
                 self.w2cQueue.put('task_over')
-                with torch.cuda.stream(self.strms[1]):
-                    self.engine.release_model()
-                    self.imgs = []
+                self.engine.release_model()
+                self.imgs = []
 
-            if command == 'exit':
+            if command[0] == 'exit':
                 print(f'worker {self.id} processed image number : {self.img_count} and to exit ...')
                 break
                 
