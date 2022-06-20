@@ -2,6 +2,7 @@ import numpy as np
 import time
 import os
 import torch
+import pickle
 from utils.torch_utils import time_sync
 
 class Detect:
@@ -10,7 +11,7 @@ class Detect:
         self.name = model[0]
         self.id = id
         self.device = 'cpu'
-        # self.model._apply(self.pin_memory)  
+        self.model._apply(self.pin_memory)  
         
         self.warm_up()
     
@@ -36,14 +37,9 @@ class Detect:
         return tensor.pin_memory()
 
     @torch.no_grad()
-    def run(self, w_id, img):
-        img = img.transpose((0, 3, 1, 2))[::-1]  # HWC to CHW, BGR to RGB
-        img = np.ascontiguousarray(img)
-
-        im = torch.from_numpy(img).type(torch.FloatTensor).to(self.device)
-        if len(im.shape) == 3:
-            im = im[None]  # expand for batch dim
-        
+    def run(self, w_id, im):   
+        # if len(im.shape) == 3:
+        #     im = im[None]  # expand for batch dim
         print(f'worker {w_id} : data shape is {im.shape} ')  
         
         dt = []
@@ -68,41 +64,45 @@ class Worker:
         self.w2cQueue = w2cQueue
         self.imgQueue = imgQueue
         self.time_stamp = time_stamp
-        self.imgs = 0
+        self.img_count = 0
+        self.fake_imgs = []
         self.has_started = False 
     
     def run(self):
         
         while True:
-            command = self.c2wQueue.get()
+            command = pickle.loads(self.c2wQueue.get())
             if not self.has_started and command is not None:
                 self.time_stamp.append(time.time())
                 self.has_started = True
                 
-            if command == 'to_load':
+            if command[0] == 'to_load':
                 self.engine.load_model()
-                torch.cuda.synchronize()
-                    
-            if command == 'to_infer':
                 assert not self.imgQueue.empty()
-                
-                # auto-blocking
-                batch_cmd = self.c2wQueue.get()
-                frames = []
-                for _ in range(int(batch_cmd)):
+                 
+                bs = command[1]
+                for _ in range(bs):
                     if self.imgQueue.qsize() > 0:
-                        self.imgs = self.imgQueue.get()
-                        frames.append(np.zeros(shape=(384, 640, 3)))
-
-                assert len(frames) > 0
-
-                pred = self.engine.run(self.id, np.stack(frames))
-                # send signal to controller
-                self.w2cQueue.put('batch_done')
+                        self.img_count = self.imgQueue.get()
+                        self.fake_imgs.append(np.zeros(shape=(384, 640, 3)))
+                        
+                self.fake_imgs = np.stack(self.fake_imgs)
+                self.fake_imgs = self.fake_imgs.transpose((0, 3, 1, 2))
+                self.fake_imgs = np.ascontiguousarray(self.fake_imgs)      
+                self.fake_imgs = torch.from_numpy(self.fake_imgs).type(torch.FloatTensor).cuda()
+                torch.cuda.synchronize()
+                
+                self.w2cQueue.put(pickle.dumps(['load_over']))
+                assert len(self.fake_imgs) > 0
+                    
+            if command[0] == 'to_infer':
+                pred = self.engine.run(self.id, self.fake_imgs)
+                self.w2cQueue.put(pickle.dumps(['task_over', time.time()]))
+                self.fake_imgs = []
                 self.engine.release_model()
                         
-            if command == 'exit':
-                print(f'worker {self.id} processed image number : {self.imgs} and to exit ...')
+            if command[0] == 'exit':
+                print(f'worker {self.id} processed image number : {self.img_count} and to exit ...')
                 break
                 
         self.time_stamp.append(time.time())
