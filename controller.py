@@ -8,7 +8,7 @@ class Controller:
     """
     作为Controller, 监视所有的Worker
     """
-    def __init__(self, detector_num=6, img_num=800, mem=1024, config=None, strategy='infer_time',
+    def __init__(self, detector_num=6, img_num=800, mem=1024, config=None,
                 c2wQueues=None, w2cQueues=None, imgQueues=None):
         """ 
         two-way communiaction to prevent message contention
@@ -33,7 +33,6 @@ class Controller:
         self.task_num = 0 # record the number of tasks at the moment
         self.total_requests = 0
         self.config = config  # list, each element is dictionary
-        self.strat = strategy
         self.ddls = None # single round deadlines for each worker
         self.qos_violation_count = 0
         self.avg_violation_ratio = []
