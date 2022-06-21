@@ -81,9 +81,8 @@ class Detect:
 
 class Worker:
     
-    def __init__(self, id, batchsize, c2wQueue, w2cQueue, imgQueue, time_stamp, model):
+    def __init__(self, id, c2wQueue, w2cQueue, imgQueue, time_stamp, model):
         self.id = id
-        self.batchsize = batchsize
         self.engine = Detect(model, id)
         self.name = model[0]
         self.c2wQueue = c2wQueue
