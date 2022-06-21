@@ -6,12 +6,13 @@ import torch
 import joblib
 import numpy as np
 import time
+from visualize import plot
 
 class Controller:
     """
     作为Controller, 监视所有的Worker
     """
-    def __init__(self, img_num=800, configs=None, models=None, c2wQueues=None, w2cQueues=None, imgQueues=None):
+    def __init__(self, img_num=800, configs=None, models=None, c2wQueues=None, w2cQueues=None, imgQueues=None, if_plotted=False):
         """ 
         two-way communiaction to prevent message contention
         """
@@ -43,7 +44,9 @@ class Controller:
         self.avg_violation_ratio = []
         self.completion_time = None  # recording the completion time for each worker
         self.regressor = joblib.load('./train/lat_pred.pkl')
-        # self.regressor = joblib.load('./train/old_lat_pred.pkl')
+        self.timestamps_for_each_round = [[] for _ in range(self.detector_num)]
+        self.timestamps_for_all_round = [[] for _ in range(self.detector_num)]
+        self.if_plotted = if_plotted
         
         print('##### Controller init success #####')
         
@@ -61,6 +64,11 @@ class Controller:
 
         for x in self.cmds:
             self.total_requests += sum(x)
+        
+        for i in range(self.detector_num):
+            signal = self.w2cQueues[i].get()
+            assert signal == 'warm_up_over'
+            print(f'@@@@@@ worker {i} finished warm up @@@@@')
             
         self.compute_candidates()
     
@@ -112,6 +120,7 @@ class Controller:
                 index = self.find_index(id)
                 assert index >= 0, 'Fail to find candiate to load...'
                 self.c2wQueues[id].put(pickle.dumps(['loading', self.candidate[index].bs]))
+                self.timestamps_for_each_round[id].append(time.time())
                 self.lCursor += 1
         
     def notify_to_infer(self, ids):
@@ -198,7 +207,30 @@ class Controller:
                 self.qos_violation_count += batch
                 vio_ratio = [(real - self.models[i].ddl) / self.models[i].ddl * 100 for _ in range(batch)]
                 self.avg_violation_ratio.extend(vio_ratio)
-          
+    
+    def record_timestamps_and_clear_cache(self):
+        for i, ts in enumerate(self.timestamps_for_each_round):
+            if len(ts) == 2:
+                self.timestamps_for_all_round[i].append(ts)
+            self.timestamps_for_each_round[i] = []
+    
+    def timeline_view(self):
+        # data alignment
+        start_up = []
+        for i in range(self.detector_num):
+            start_up.append(self.timestamps_for_all_round[i][0][0]) 
+        start_up = min(start_up)
+        
+        for i in range(self.detector_num):
+            number = len(self.timestamps_for_all_round[i])
+            for j in range(number):
+                for k in range(2):
+                    self.timestamps_for_all_round[i][j][k] -= start_up
+                    # self.timestamps_for_all_round[i][j][k] *= 1000    # ms
+        
+        plot(self.timestamps_for_all_round)  
+        return              
+               
     # Shortest Remaining Time scheduling strategy
     def update_cmd_queue(self):    
         
@@ -211,6 +243,7 @@ class Controller:
                         self.tCursor -= 1
                         self.task_num -= 1
                         self.completion_time[id] = 1000 * (time.time() - self.completion_time[id])
+                        self.timestamps_for_each_round[id].append(time.time())
                     elif command == 'load_over':
                         self.load_state[id] = True
                         self.lCursor -= 1
@@ -236,6 +269,7 @@ class Controller:
         if self.task_num <= 0: 
             self.load_time_limit = 10000000
             self.compute_qos_violation()
+            self.record_timestamps_and_clear_cache()
             self.round += 1
             print(f'\033[1;34m [ROUND] : {self.round}\033[0m')
             self.compute_candidates()
@@ -254,4 +288,6 @@ class Controller:
         print(f"All workers has finished jobs, processing {self.total_requests} images in total!")
         print(f'Total number of overtime task is : {self.qos_violation_count}')
         print(f'Average QoS violation ratio is : {sum(self.avg_violation_ratio)/self.qos_violation_count}')
+        if self.if_plotted:
+            self.timeline_view()
         return

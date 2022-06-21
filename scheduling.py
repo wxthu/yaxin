@@ -28,13 +28,14 @@ def runWorker(i, modules, c2wQueue, w2cQueue, imgQueue, time_stamp, model):
                     )
     worker.run()
 
-def runController(image_num, video_num, c2wQueues, w2cQueues, imgQueues,  configs, models):
+def runController(image_num, video_num, c2wQueues, w2cQueues, imgQueues, configs, models, visualize):
     controller = Controller(img_num=image_num*video_num, 
                             configs=configs,
                             models=models,
                             c2wQueues=c2wQueues, 
                             w2cQueues=w2cQueues, 
-                            imgQueues=imgQueues)
+                            imgQueues=imgQueues,
+                            if_plotted=visualize)
     controller.run()
 
 def parse_opt():
@@ -43,6 +44,7 @@ def parse_opt():
     parser.add_argument('--img_num', type=int, default=200, help='the number of img sent by each client')
     parser.add_argument('--videos', type=int, default=4, help='the number of video stream')
     parser.add_argument('--memory', type=int, default=1500, help='available gpu memory in the server')
+    parser.add_argument('--visualize', action='store_true', help='visualize the timeline for each worker')
     opt = parser.parse_args()
     print_args(vars(opt))
     return opt
@@ -61,6 +63,7 @@ def main(opt):
     image_num = args_dict['img_num']
     video_num = args_dict['videos']
     total_memory = args_dict['memory']
+    visualize = args_dict['visualize']
 
     # record all workers timestamp
     time_stamp = Manager().list()
@@ -92,7 +95,8 @@ def main(opt):
                                                      w2cQueues,
                                                      imgQueues,
                                                      configs,
-                                                     analysers
+                                                     analysers,
+                                                     visualize
                                                      )
                          )
     
@@ -122,9 +126,8 @@ def main(opt):
         detector.join()
     
     profiler.stop()
-    warmup_overhead = 2.5
     duration = max(time_stamp) - min(time_stamp)
-    print("***** The system end-to-end latency is : {:.3f}s *****".format(duration - warmup_overhead))
+    print("***** The system end-to-end latency is : {:.3f}s *****".format(duration))
 
 
 if __name__ == "__main__":
