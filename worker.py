@@ -31,7 +31,6 @@ class Detect:
         for _ in range(5):
             self.model(fake_img)
         self.model.cpu()
-        print(f'@@@@@@ worker {self.id} finished warm up @@@@@')   
                 
     def pre_hook(self):
         def forward_pre_hook(module, data_input):
@@ -117,7 +116,7 @@ class Worker:
         self.has_started = False
         
     def run(self):
-        
+        self.w2cQueue.put('warm_up_over')
         while True:
             command = pickle.loads(self.c2wQueue.get())
             if not self.has_started and command is not None:
