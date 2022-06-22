@@ -174,7 +174,8 @@ class Controller:
         pred_lat = self.regressor.predict(
             np.array([self.candidate[0].bs, self.candidate[1].bs, flops1, flops2]).reshape(1,4))
         
-        if pred_lat <= self.candidate[0].ddl:
+        lt = self.get_model_loading_time(self.candidate[0].id) + self.get_model_loading_time(self.candidate[1].id)
+        if pred_lat <= self.candidate[0].ddl and lt <= self.load_time_limit:
             return self.candidate[1].id, True
             
         return -1, False
