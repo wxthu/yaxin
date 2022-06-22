@@ -154,8 +154,9 @@ class Controller:
         if stop2 > 0:
             flops2 = self.get_module_flops(self.candidate[1].id, self.candidate[1].cur_mod, stop2)
         else:
-            return self.regressor.predict(
-                np.array([self.candidate[0].bs, 0, flops1, 0]).reshape(1,4))
+            index = self.candidate[0].id
+            bsize = self.candidate[0].bs
+            return self.config[index][bsize][1]['infer_time']
             
         return self.regressor.predict(
             np.array([self.candidate[0].bs, self.candidate[1].bs, flops1, flops2]).reshape(1,4))
