@@ -187,16 +187,6 @@ class Controller:
         start2 = self.candidate[1].cur_mod
         stop2 = self.candidate[1].module_num
         flops1 = self.get_module_flops(self.candidate[0].id, start1, stop1)
-        
-        # Compare with no blocking version
-        # flops2 = self.get_module_flops(self.candidate[1].id, start2, stop2)
-        # pred_lat = self.regressor.predict(
-        #     np.array([self.candidate[0].bs, self.candidate[1].bs, flops1, flops2]).reshape(1,4))
-        # if pred_lat <= self.candidate[0].ddl:
-        #     self.candidate[1].cur_mod = self.candidate[1].module_num
-        #     return self.candidate[1].id, stop2, True
-        
-        # return -1, -1, False
 
         # binary search to find maximal op range
         rs = start2
