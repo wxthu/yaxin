@@ -329,6 +329,7 @@ class Controller:
         for i in range(self.detector_num):
             self.load_state[i] = False
             self.if_full[i] = False    
+            self.models[i].cur_mod = 0 
             
     def run(self):
         self.initialization()
