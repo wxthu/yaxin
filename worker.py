@@ -20,10 +20,10 @@ class Detect:
         self.start_imod = 0
         self.stop_imod = 0     # inference cursor
         self.start_lmod = 0
-        self.stop_lmod = 0      # loading cursor
-        self.model._apply(self.pin_memory)
-        
+        self.stop_lmod = 0      # loading cursor        
         self.warm_up()
+        
+        self.model._apply(self.pin_memory)
     
     def warm_up(self):
         self.model.cuda()
