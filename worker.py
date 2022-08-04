@@ -13,9 +13,9 @@ class Detect:
         self.id = id
         self.device = 'cpu'
         self.match_pair = dict()
-        self.model._apply(self.pin_memory)
-        
         self.warm_up()
+        
+        self.model._apply(self.pin_memory)
     
     def warm_up(self):
         self.model.cuda()
