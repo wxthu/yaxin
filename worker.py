@@ -15,10 +15,10 @@ class Detect:
         self.device = 'cpu'
         self.match_pair = dict()
         self.modules = modules
-        self.model._apply(self.pin_memory)  
-        
         self.warm_up()
         
+        self.model._apply(self.pin_memory)
+    
     def warm_up(self):
         self.model.cuda()
         fake_img = torch.zeros(1, 3, 224, 224).cuda()
