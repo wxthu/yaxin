@@ -11,9 +11,9 @@ class Detect:
         self.name = model[0]
         self.id = id
         self.device = 'cpu'
-        self.model._apply(self.pin_memory)  
-        
         self.warm_up()
+        
+        self.model._apply(self.pin_memory)  
     
     def warm_up(self):
         self.model.cuda()
