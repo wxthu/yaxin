@@ -1,7 +1,14 @@
 
 import os
+import matplotlib as mpl
+import sqlite3
+import json
 import matplotlib.pyplot as plt
 import numpy as np
+
+font_name = 'STKaiti'
+mpl.rcParams['font.family'] = font_name
+mpl.rcParams['axes.unicode_minus'] = False
 
 def ncu_rep_parser(filename: str) -> None :
     cmd = "ncu --metrics sm__throughput.avg.pct_of_peak_sustained_elapsed,gpu__compute_memory_throughput.avg.pct_of_peak_sustained_elapsed --page raw --csv --import "
@@ -51,3 +58,36 @@ def ncu_rep_parser(filename: str) -> None :
         
     plt.legend(loc='upper right', fontsize=8)
     plt.savefig('GPU Throughput.jpg')
+    
+def nsys_sqlite_parser(filename: str) -> None:
+    con = sqlite3.connect(filename)
+    cur = con.cursor()
+    
+    lKeys=["Compute Warps In Flight","Pixel Warps In Flight", \
+        "Unallocated Warps in Active SMs","Vertex/Tess/Geometry Warps In Flight","Tensor Active"]
+    lTime = list()
+    lList = [list() for x in lKeys]
+    
+    for rawTimestamp, typeId, data in cur.execute("SELECT rawTimestamp,typeId,data FROM GENERIC_EVENTS"):
+        jJson=json.loads(data)
+        for index, key in enumerate(lKeys):
+            assert key in jJson
+            lList[index].append(int(jJson[key]))
+        
+        lTime.append(rawTimestamp)
+        
+    con.close()
+    
+    # filtering noise , by Weining Chen
+    ratio=1000
+    sinclen=10
+    sinc = np.sinc(np.linspace(-sinclen, sinclen, 2*sinclen*ratio+1))/ratio
+    
+    for key, data in zip(lKeys, lList):
+        pdata = np.convolve(data, sinc)
+        plt.plot(lTime[::ratio], pdata[sinclen*ratio:sinclen*ratio+len(lTime):ratio], label=key)
+        
+    plt.legend()
+    plt.xlabel('时间/ns')
+    plt.ylabel('SM 占用率/%')
+    plt.savefig('SM occupancy.jpg')
