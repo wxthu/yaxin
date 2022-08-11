@@ -2,7 +2,7 @@
 from load_mock_data import load_mock_data
 import pickle
 import time
-from visualize import plot
+from utils.visualize import plot
 
 class Controller:
     """
