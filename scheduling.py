@@ -8,12 +8,12 @@ We often have following configs for testing:
 import argparse
 import multiprocessing
 from multiprocessing import Process, Queue, Manager
+import torch
 
 from torchvision.models.resnet import resnet18, resnet34, resnet50, resnet101, resnet152
 from torchvision.models import alexnet, vgg16, vgg13, vgg11, squeezenet1_0, squeezenet1_1
-from utils.general import check_requirements, print_args
-
-from controller import Controller     
+from utils.general import print_args
+from controller import Controller
 from worker import Worker
 
 def runWorker(i,
@@ -55,7 +55,8 @@ def parse_opt():
 
 
 def main(opt):
-    check_requirements(exclude=('tensorboard', 'thop'))
+    multiprocessing.set_start_method('spawn')
+    torch.multiprocessing.set_sharing_strategy('file_system')
     args_dict = vars(opt)
 
     platform = args_dict['platform']
