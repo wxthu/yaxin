@@ -6,7 +6,7 @@ import torch
 import joblib
 import numpy as np
 import time
-from visualize import plot
+from utils.visualize import plot
 
 class Controller:
     """
