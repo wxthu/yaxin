@@ -3,7 +3,8 @@ from decision import Decision
 from load_mock_data import load_mock_data
 import time 
 import pickle
-from visualize import plot
+import time
+from utils.visualize import plot
 
 class Controller:
     """
