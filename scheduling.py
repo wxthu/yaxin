@@ -12,7 +12,6 @@ import torch
 
 from torchvision.models.resnet import resnet18, resnet34, resnet50, resnet101, resnet152
 from torchvision.models import alexnet, vgg16, vgg13, vgg11, squeezenet1_0, squeezenet1_1
-from utils.general import print_args
 from controller import Controller
 from worker import Worker
 
@@ -50,7 +49,6 @@ def parse_opt():
     parser.add_argument('--memory', type=int, default=1500, help='available gpu memory in the server')
     parser.add_argument('--visualize', action='store_true', help='visualize the timeline for each worker')
     opt = parser.parse_args()
-    print_args(vars(opt))
     return opt
 
 
